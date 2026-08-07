@@ -22,6 +22,5 @@ jobs:
 
       - name: Repointer la disponibilité si besoin
         env:
-          MIDRAG_EMAIL: ${{ secrets.MIDRAG_EMAIL }}
-          MIDRAG_PASSWORD: ${{ secrets.MIDRAG_PASSWORD }}
+          MIDRAG_TOKEN: ${{ secrets.MIDRAG_TOKEN }}
         run: python midrag_bot/bot.py
