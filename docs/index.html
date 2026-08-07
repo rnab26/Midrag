@@ -107,9 +107,18 @@
     margin-left: 4px;
   }
   .date-row select { margin-bottom: 0; padding: 8px; font-size: 0.85rem; flex: 1 1 150px; }
-  .date-row .times { display: none; gap: 6px; flex: 1 1 160px; }
+  .date-row .times { display: none; flex-direction: column; gap: 4px; flex: 1 1 200px; }
   .date-row .times.active { display: flex; }
-  .date-row .times input { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
+  .date-row .time-inputs { display: flex; gap: 6px; }
+  .date-row .times input[type=time] { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
+  .full-day-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .full-day-label input { width: auto; margin: 0; }
   .status {
     font-size: 0.9rem;
     margin-top: 10px;
@@ -268,15 +277,26 @@ function addDateRow(dateStr) {
       ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
     </select>
     <div class="times">
-      <input type="time" class="start-input" value="08:00">
-      <input type="time" class="end-input" value="20:00">
+      <label class="full-day-label">
+        <input type="checkbox" class="full-day-check">
+        Toute la journée
+      </label>
+      <div class="time-inputs">
+        <input type="time" class="start-input" value="08:00">
+        <input type="time" class="end-input" value="20:00">
+      </div>
     </div>
   `;
   list.appendChild(row);
   const select = row.querySelector(".mode-select");
   const times = row.querySelector(".times");
+  const fullDay = row.querySelector(".full-day-check");
+  const timeInputs = row.querySelector(".time-inputs");
   select.addEventListener("change", () => {
     times.classList.toggle("active", select.value !== "");
+  });
+  fullDay.addEventListener("change", () => {
+    timeInputs.style.display = fullDay.checked ? "none" : "flex";
   });
 }
 
@@ -314,14 +334,21 @@ function parseConfig(yamlText) {
     const info = byDate[row.dataset.date];
     const select = row.querySelector(".mode-select");
     const times = row.querySelector(".times");
+    const fullDay = row.querySelector(".full-day-check");
+    const timeInputs = row.querySelector(".time-inputs");
     if (info) {
       select.value = info.mode;
       row.querySelector(".start-input").value = info.start;
       row.querySelector(".end-input").value = info.end;
       times.classList.add("active");
+      const isFullDay = info.start === "00:00" && info.end === "23:59";
+      fullDay.checked = isFullDay;
+      timeInputs.style.display = isFullDay ? "none" : "flex";
     } else {
       select.value = "";
       times.classList.remove("active");
+      fullDay.checked = false;
+      timeInputs.style.display = "flex";
     }
   });
 }
@@ -348,8 +375,9 @@ function buildConfigYaml() {
     const mode = row.querySelector(".mode-select").value;
     if (!mode) return;
     any = true;
-    const start = row.querySelector(".start-input").value || "00:00";
-    const end = row.querySelector(".end-input").value || "23:59";
+    const fullDay = row.querySelector(".full-day-check").checked;
+    const start = fullDay ? "00:00" : (row.querySelector(".start-input").value || "00:00");
+    const end = fullDay ? "23:59" : (row.querySelector(".end-input").value || "23:59");
     lines.push(`  - date: "${row.dataset.date}"`);
     lines.push(`    start: "${start}"`);
     lines.push(`    end: "${end}"`);
