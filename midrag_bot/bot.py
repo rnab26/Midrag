@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
 """Maintient automatiquement le statut de disponibilité sur Midrag.
 
-Lu par un workflow GitHub Actions planifié toutes les ~15 minutes. À chaque
-exécution: si l'heure courante tombe dans une plage définie dans
-config.yaml, le bot se connecte à Midrag et repointe le mode demandé
-("disponible maintenant" ou "disponible aujourd'hui") pour empêcher
-l'expiration automatique du statut.
+Lancé par un workflow GitHub Actions planifié toutes les ~15 minutes. À
+chaque exécution: si l'heure courante tombe dans une plage définie dans
+config.yaml, le bot rejoue l'appel "SetSliderStatus" pour empêcher
+l'expiration automatique du niveau demandé (le site remet le compte à zéro
+du timer d'expiration à chaque appel réussi).
 
-Identifiants lus depuis les variables d'environnement MIDRAG_EMAIL et
-MIDRAG_PASSWORD (jamais en dur dans le code, jamais commités).
+La connexion (téléphone + numéro d'entreprise + code SMS) ne peut pas être
+automatisée car Midrag exige un code reçu par SMS à chaque login. Le bot
+utilise donc directement le token JWT obtenu après une connexion manuelle
+(voir README pour la procédure de capture/rafraîchissement), stocké dans
+la variable d'environnement MIDRAG_TOKEN. Ce token dure plusieurs semaines
+avant expiration.
 """
 from __future__ import annotations
 
+import base64
+import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
@@ -23,29 +29,16 @@ import yaml
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
 
-# ---------------------------------------------------------------------------
-# TODO: à remplir une fois la capture réseau faite (voir README).
-# ---------------------------------------------------------------------------
-LOGIN_URL = "TODO_URL_DE_LOGIN"
-LOGIN_METHOD = "POST"
-# Noms des champs attendus par l'API de login (à ajuster selon la capture).
-LOGIN_PAYLOAD_TEMPLATE = {
-    "email": "{email}",
-    "password": "{password}",
-}
-# Où trouver le token dans la réponse JSON du login, ex: "token" ou
-# "data.accessToken". Laisser tel quel si l'auth passe par cookie de session
-# (dans ce cas, utiliser une requests.Session() suffit, voir plus bas).
-TOKEN_JSON_PATH: str | None = None  # ex: "token"
+SET_STATUS_URL = "https://biz-api.midrag.co.il/SliderAvailability/SetSliderStatus"
 
-AVAILABILITY_URL = "TODO_URL_DE_DISPONIBILITE"
-AVAILABILITY_METHOD = "POST"
-# Valeurs exactes attendues par l'API pour chaque mode (à ajuster).
-MODE_PAYLOADS = {
-    "now": {"status": "TODO_VALEUR_DISPONIBLE_MAINTENANT"},
-    "today": {"status": "TODO_VALEUR_DISPONIBLE_AUJOURDHUI"},
+# Correspondance entre les modes du config.yaml et les niveaux attendus par
+# l'API Midrag (confirmé via capture réseau du curseur du site).
+MODE_TO_LEVEL = {
+    "now": 1,        # פנוי עכשיו - disponible maintenant
+    "today": 2,       # פנוי היום - disponible aujourd'hui
+    "tomorrow": 3,    # פנוי מחר - disponible demain
+    "unavailable": 0,  # לא פנוי - pas disponible
 }
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -75,54 +68,67 @@ def load_config() -> tuple[ZoneInfo, int, list[Window]]:
     return tz, sector_id, windows
 
 
-def login(session: requests.Session, email: str, password: str) -> str | None:
-    payload = {
-        k: v.format(email=email, password=password) if isinstance(v, str) else v
-        for k, v in LOGIN_PAYLOAD_TEMPLATE.items()
-    }
-    resp = session.request(LOGIN_METHOD, LOGIN_URL, json=payload, timeout=30)
-    resp.raise_for_status()
-
-    if TOKEN_JSON_PATH is None:
-        # Auth par cookie de session: requests.Session conserve les cookies
-        # automatiquement entre les appels, rien à faire de plus.
+def token_expiry(token: str) -> datetime | None:
+    """Lit le champ 'exp' du JWT sans vérifier la signature (juste pour
+    prévenir l'utilisateur avant l'expiration, la vraie vérification est
+    faite par Midrag)."""
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    except Exception:
         return None
 
-    data = resp.json()
-    token = data
-    for part in TOKEN_JSON_PATH.split("."):
-        token = token[part]
-    return token
 
-
-def set_availability(session: requests.Session, sector_id: int, mode: str, token: str | None) -> None:
-    payload = {**MODE_PAYLOADS[mode], "sectorId": sector_id}
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    resp = session.request(AVAILABILITY_METHOD, AVAILABILITY_URL, json=payload, headers=headers, timeout=30)
+def set_slider_status(token: str, sector_id: int, level: int) -> dict:
+    resp = requests.post(
+        SET_STATUS_URL,
+        json={"level": level, "sectorId": sector_id},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
     resp.raise_for_status()
+    body = resp.json()
+    if body.get("isBusinessLogicError"):
+        raise RuntimeError(f"Midrag a refusé la mise à jour: {body}")
+    return body
 
 
 def main() -> int:
-    email = os.environ.get("MIDRAG_EMAIL")
-    password = os.environ.get("MIDRAG_PASSWORD")
-    if not email or not password:
-        print("MIDRAG_EMAIL / MIDRAG_PASSWORD manquants dans l'environnement.", file=sys.stderr)
+    token = os.environ.get("MIDRAG_TOKEN")
+    if not token:
+        print("MIDRAG_TOKEN manquant dans l'environnement.", file=sys.stderr)
         return 1
 
     tz, sector_id, windows = load_config()
     now = datetime.now(tz)
+
+    expiry = token_expiry(token)
+    if expiry is not None:
+        days_left = (expiry - datetime.now(timezone.utc)).days
+        if days_left < 0:
+            print(
+                f"MIDRAG_TOKEN a expiré le {expiry.isoformat()}. "
+                "Refais la procédure de connexion manuelle et mets à jour le secret GitHub.",
+                file=sys.stderr,
+            )
+            return 1
+        if days_left <= 5:
+            print(f"[ATTENTION] MIDRAG_TOKEN expire dans {days_left} jour(s) ({expiry.isoformat()}).")
 
     active = next((w for w in windows if w.is_active(now)), None)
     if active is None:
         print(f"[{now.isoformat()}] Hors plage horaire configurée, rien à faire.")
         return 0
 
-    session = requests.Session()
-    token = login(session, email, password)
-    set_availability(session, sector_id, active.mode, token)
-    print(f"[{now.isoformat()}] Statut '{active.mode}' repointé avec succès (secteur {sector_id}).")
+    level = MODE_TO_LEVEL[active.mode]
+    result = set_slider_status(token, sector_id, level)
+    current_level = result["data"]["currentLevel"]
+    print(
+        f"[{now.isoformat()}] Mode '{active.mode}' (niveau {level}) repointé "
+        f"pour le secteur {sector_id}. Niveau confirmé par Midrag: {current_level}."
+    )
     return 0
 
 

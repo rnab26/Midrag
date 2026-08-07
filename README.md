@@ -8,41 +8,65 @@ avoir à cliquer toutes les heures.
 
 - `midrag_bot/config.yaml` : tu y définis tes plages horaires (jours, heure
   de début/fin) et le mode voulu pour chacune (`now` = disponible
-  maintenant en boucle, `today` = disponible aujourd'hui).
-- `midrag_bot/bot.py` : script qui, à chaque exécution, regarde l'heure
-  actuelle, la compare à `config.yaml`, et si on est dans une plage active,
-  se connecte à Midrag et repointe le statut correspondant.
+  maintenant, `today` = disponible aujourd'hui, `tomorrow` = disponible
+  demain, `unavailable` = pas disponible).
+- `midrag_bot/bot.py` : à chaque exécution, regarde l'heure actuelle, la
+  compare à `config.yaml`, et si on est dans une plage active, appelle
+  l'API Midrag (`SetSliderStatus`) pour repointer le niveau correspondant
+  — ce qui remet à zéro le décompte avant expiration côté Midrag.
 - `.github/workflows/midrag-availability.yml` : fait tourner `bot.py`
   automatiquement toutes les 15 minutes via GitHub Actions — pas besoin de
-  garder un ordinateur allumé.
+  garder un téléphone ou un ordinateur allumé.
 
-## État actuel du projet
+### Pourquoi pas une connexion 100% automatique ?
 
-⚠️ **Pas encore fonctionnel.** `bot.py` contient des `TODO_...` à la place
-des vraies URLs d'API Midrag (login + changement de disponibilité). Il faut
-d'abord capturer ces informations réseau (voir la conversation avec
-Claude / la section ci-dessous), puis les renseigner dans `bot.py`.
+Midrag exige un code reçu par SMS à chaque connexion (téléphone + n°
+d'entreprise + code SMS → token). Ça ne peut pas être automatisé sans
+accès à tes SMS. À la place, le bot utilise directement le **token** que
+Midrag délivre après une connexion manuelle — ce token reste valable
+plusieurs semaines. Il te suffit donc de refaire la procédure ci-dessous
+environ **une fois par mois**, au lieu de pointer toutes les heures.
 
-## Mise en place (une fois les endpoints connus)
+## Mise en place
 
-1. **Secrets GitHub** (jamais tes identifiants en clair dans le repo) :
-   - Sur GitHub (web ou appli mobile) : `Settings` → `Secrets and
-     variables` → `Actions` → `New repository secret`.
-   - Créer `MIDRAG_EMAIL` avec ton email/téléphone de connexion.
-   - Créer `MIDRAG_PASSWORD` avec ton mot de passe.
-2. **Planning** : éditer `midrag_bot/config.yaml` directement depuis
-   l'appli GitHub mobile (ouvrir le fichier → crayon pour éditer → commit)
-   pour changer tes horaires ou le mode, quand tu veux, depuis ton
-   téléphone.
-3. Le workflow tourne ensuite tout seul toutes les 15 minutes. Onglet
-   `Actions` du repo pour voir l'historique des exécutions et les erreurs
-   éventuelles.
+### 1. Récupérer ton token Midrag (à refaire ~1x/mois)
+
+1. Va sur `bizn.midrag.co.il` et connecte-toi normalement (téléphone + n°
+   d'entreprise + code SMS).
+2. Une fois sur la page de disponibilité, ouvre les outils développeur du
+   navigateur (`F12`), onglet **Network**, filtre **Fetch/XHR**.
+3. Cherche dans l'historique la requête **`Token`** (elle a eu lieu pendant
+   la connexion — si tu ne la vois pas, déconnecte-toi et refais la
+   procédure de connexion avec Network déjà ouvert).
+4. Onglet **Response** de cette requête → copie la valeur de `data.token`
+   (une longue chaîne commençant par `eyJ...`). C'est ton nouveau token.
+
+### 2. Secret GitHub
+
+- Sur GitHub (web ou appli mobile) : `Settings` → `Secrets and variables`
+  → `Actions` → `New repository secret`.
+- Nom : `MIDRAG_TOKEN`. Valeur : le token copié à l'étape précédente.
+- Quand tu rafraîchis le token (~1x/mois, ou si le bot t'envoie un mail
+  d'échec GitHub Actions signalant une expiration), remplace juste la
+  valeur de ce même secret.
+
+### 3. Planning
+
+Édite `midrag_bot/config.yaml` directement depuis l'appli GitHub mobile
+(ouvrir le fichier → crayon pour éditer → commit) pour changer tes
+horaires ou le mode, quand tu veux, depuis ton téléphone.
+
+### 4. C'est tout
+
+Le workflow tourne ensuite tout seul toutes les 15 minutes. Onglet
+`Actions` du repo pour voir l'historique des exécutions. Si une exécution
+échoue (token expiré, etc.), GitHub t'envoie normalement un email
+d'alerte automatique.
 
 ## ⚠️ Point d'attention
 
-Automatiser des clics/connexions sur une plateforme tierce peut être
-contraire à ses conditions d'utilisation (beaucoup de plateformes de mise
-en relation interdisent les bots pour éviter de fausser l'attribution des
-missions). C'est ton compte et ta décision, mais vérifie les CGU de Midrag
-et reste conscient du risque (suspension de compte) avant d'activer ça en
-continu.
+Automatiser des actions sur une plateforme tierce peut être contraire à
+ses conditions d'utilisation (beaucoup de plateformes de mise en relation
+interdisent les bots pour éviter de fausser l'attribution des missions).
+C'est ton compte et ta décision, mais vérifie les CGU de Midrag et reste
+conscient du risque (suspension de compte) avant d'activer ça en continu.

@@ -9,12 +9,14 @@ sector_id: 21
 # Liste de plages horaires. Le bot tourne toutes les ~15 minutes (voir le
 # workflow GitHub Actions) et, pour chaque exécution, regarde si l'heure
 # actuelle tombe dans une des plages ci-dessous. Si oui, il "repointe" le
-# mode demandé pour toi.
+# mode demandé pour toi (ce qui remet à zéro le décompte avant expiration
+# côté Midrag).
 #
 # mode:
-#   "now"   -> maintient "disponible maintenant" (se réactualise en boucle
-#              pour ne jamais laisser passer l'expiration d'1h)
-#   "today" -> maintient "disponible aujourd'hui"
+#   "now"         -> maintient "פנוי עכשיו" / disponible maintenant
+#   "today"       -> maintient "פנוי היום" / disponible aujourd'hui
+#   "tomorrow"    -> maintient "פנוי מחר" / disponible demain
+#   "unavailable" -> maintient "לא פנוי" / pas disponible
 #
 # days: lundi=mon, mardi=tue, mercredi=wed, jeudi=thu, vendredi=fri,
 #       samedi=sat, dimanche=sun
@@ -24,7 +26,7 @@ schedule:
     end: "20:00"
     mode: "now"
 
-  # Exemple (désactivé par défaut, ajoute "- days: ..." pour l'activer):
+  # Exemple (désactivé par défaut, décommente et ajuste pour l'activer):
   # - days: [fri]
   #   start: "08:00"
   #   end: "14:00"
