@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Midrag — planning de disponibilité</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --border: #dcdce0;
+    --accent: #a3134f;
+    --accent-dark: #7d0e3d;
+    --ok: #1e7e34;
+    --err: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    padding-bottom: 64px;
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 1rem;
+    margin: 0 0 12px;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    background: #fff;
+    color: var(--text);
+  }
+  button {
+    appearance: none;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    width: 100%;
+  }
+  .btn-primary:active { background: var(--accent-dark); }
+  .btn-secondary {
+    background: #ececef;
+    color: var(--text);
+    width: 100%;
+  }
+  .btn-primary:disabled, .btn-secondary:disabled {
+    opacity: 0.5;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 0.8rem; color: var(--muted); padding: 4px; }
+  td { padding: 6px 4px; border-top: 1px solid var(--border); }
+  .day-row td:first-child { font-weight: 600; white-space: nowrap; }
+  .day-row select, .day-row input { margin-bottom: 0; padding: 8px; font-size: 0.9rem; }
+  .times { display: none; gap: 6px; }
+  .times.active { display: flex; }
+  .times input { width: 100%; }
+  .status {
+    font-size: 0.9rem;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.ok { background: #e6f4ea; color: var(--ok); }
+  .status.err { background: #fbe9e7; color: var(--err); }
+  .status.pending { background: #eef1f3; color: var(--muted); }
+  details { font-size: 0.85rem; color: var(--muted); }
+  summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: -6px; margin-bottom: 12px; }
+  .badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ececef;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<h1>📅 Midrag — planning de disponibilité</h1>
+<div class="sub">Configure quand le bot doit te maintenir "disponible" automatiquement.</div>
+
+<div class="card" id="auth-card">
+  <h2>Connexion</h2>
+  <label for="pat">Jeton d'accès GitHub (fine-grained, scope Contents R/W sur ce repo)</label>
+  <input type="password" id="pat" placeholder="github_pat_..." autocomplete="off">
+  <label for="owner">Propriétaire du repo</label>
+  <input type="text" id="owner" value="rnab26">
+  <label for="repo">Nom du repo</label>
+  <input type="text" id="repo" value="Midrag">
+  <label for="branch">Branche</label>
+  <input type="text" id="branch" value="claude/midrag-availability-automation-fn3mav">
+  <button class="btn-primary" id="connect-btn">Se connecter et charger</button>
+  <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com.</div>
+  <details>
+    <summary>Comment créer ce jeton ?</summary>
+    <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
+    <p>Repository access : seulement "Midrag". Permissions : <strong>Contents: Read and write</strong> (et <strong>Actions: Read and write</strong> si tu veux le bouton "Lancer maintenant" ci-dessous). Copie le jeton généré et colle-le ici.</p>
+  </details>
+</div>
+
+<div class="card" id="schedule-card" style="display:none;">
+  <h2>Planning hebdomadaire</h2>
+  <table>
+    <thead>
+      <tr><th>Jour</th><th>Mode</th><th>Horaires</th></tr>
+    </thead>
+    <tbody id="days-body"></tbody>
+  </table>
+
+  <label for="sector" style="margin-top:12px;">Secteur Midrag (sectorId)</label>
+  <input type="number" id="sector" value="21">
+
+  <label for="cadence">Fréquence de réactualisation</label>
+  <select id="cadence">
+    <option value="5">Toutes les 5 minutes</option>
+    <option value="10">Toutes les 10 minutes</option>
+    <option value="15" selected>Toutes les 15 minutes</option>
+    <option value="20">Toutes les 20 minutes</option>
+    <option value="30">Toutes les 30 minutes</option>
+  </select>
+  <div class="hint">Doit rester bien en dessous d'1h (l'expiration de "disponible maintenant"). 15 min laisse une bonne marge.</div>
+
+  <button class="btn-primary" id="save-btn">Enregistrer le planning</button>
+  <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const DAYS = [
+  { code: "sun", label: "Dimanche" },
+  { code: "mon", label: "Lundi" },
+  { code: "tue", label: "Mardi" },
+  { code: "wed", label: "Mercredi" },
+  { code: "thu", label: "Jeudi" },
+  { code: "fri", label: "Vendredi" },
+  { code: "sat", label: "Samedi" },
+];
+const MODES = [
+  { value: "", label: "— Ne rien faire —" },
+  { value: "now", label: "Disponible maintenant" },
+  { value: "today", label: "Disponible aujourd'hui" },
+  { value: "tomorrow", label: "Disponible demain" },
+  { value: "unavailable", label: "Pas disponible" },
+];
+const CONFIG_PATH = "midrag_bot/config.yaml";
+const WORKFLOW_PATH = ".github/workflows/midrag-availability.yml";
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+
+function setStatus(kind, msg) {
+  statusEl.className = "status show " + kind;
+  statusEl.textContent = msg;
+}
+
+function apiBase() {
+  return `https://api.github.com/repos/${$("owner").value.trim()}/${$("repo").value.trim()}`;
+}
+
+async function ghGet(path) {
+  const branch = $("branch").value.trim();
+  const res = await fetch(`${apiBase()}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
+    headers: {
+      Authorization: `Bearer ${$("pat").value.trim()}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+  if (!res.ok) throw new Error(`Lecture ${path} a échoué (${res.status})`);
+  const json = await res.json();
+  const content = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ""))));
+  return { content, sha: json.sha };
+}
+
+async function ghPut(path, content, sha, message) {
+  const branch = $("branch").value.trim();
+  const res = await fetch(`${apiBase()}/contents/${path}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${$("pat").value.trim()}`,
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message,
+      content: btoa(unescape(encodeURIComponent(content))),
+      sha,
+      branch,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Écriture ${path} a échoué (${res.status}): ${body}`);
+  }
+  return res.json();
+}
+
+function buildDaysTable() {
+  const tbody = $("days-body");
+  tbody.innerHTML = "";
+  for (const day of DAYS) {
+    const tr = document.createElement("tr");
+    tr.className = "day-row";
+    tr.dataset.day = day.code;
+    tr.innerHTML = `
+      <td>${day.label}</td>
+      <td>
+        <select class="mode-select">
+          ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <div class="times">
+          <input type="time" class="start-input" value="08:00">
+          <input type="time" class="end-input" value="20:00">
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    const select = tr.querySelector(".mode-select");
+    const times = tr.querySelector(".times");
+    select.addEventListener("change", () => {
+      times.classList.toggle("active", select.value !== "");
+    });
+  }
+}
+
+function parseConfig(yamlText) {
+  const sectorMatch = yamlText.match(/sector_id:\s*(\d+)/);
+  if (sectorMatch) $("sector").value = sectorMatch[1];
+
+  const windowRe = /-\s*days:\s*\[([^\]]*)\]\s*\n\s*start:\s*"([^"]*)"\s*\n\s*end:\s*"([^"]*)"\s*\n\s*mode:\s*"([^"]*)"/g;
+  const byDay = {};
+  let m;
+  while ((m = windowRe.exec(yamlText)) !== null) {
+    const days = m[1].split(",").map(s => s.trim()).filter(Boolean);
+    for (const d of days) byDay[d] = { start: m[2], end: m[3], mode: m[4] };
+  }
+
+  document.querySelectorAll(".day-row").forEach(tr => {
+    const day = tr.dataset.day;
+    const select = tr.querySelector(".mode-select");
+    const times = tr.querySelector(".times");
+    const startInput = tr.querySelector(".start-input");
+    const endInput = tr.querySelector(".end-input");
+    if (byDay[day]) {
+      select.value = byDay[day].mode;
+      startInput.value = byDay[day].start;
+      endInput.value = byDay[day].end;
+      times.classList.add("active");
+    } else {
+      select.value = "";
+      times.classList.remove("active");
+    }
+  });
+}
+
+function parseCadence(workflowText) {
+  const m = workflowText.match(/cron:\s*"\*\/(\d+) \* \* \* \*"/);
+  if (m) $("cadence").value = m[1];
+}
+
+function buildConfigYaml() {
+  const sectorId = $("sector").value.trim() || "21";
+  const lines = [
+    "# Configuration du bot de disponibilité Midrag",
+    "# Généré par la page docs/index.html — modifie via cette page plutôt qu'à la main.",
+    "",
+    'timezone: "Asia/Jerusalem"',
+    "",
+    `sector_id: ${sectorId}`,
+    "",
+    "schedule:",
+  ];
+  let any = false;
+  document.querySelectorAll(".day-row").forEach(tr => {
+    const day = tr.dataset.day;
+    const mode = tr.querySelector(".mode-select").value;
+    if (!mode) return;
+    any = true;
+    const start = tr.querySelector(".start-input").value || "00:00";
+    const end = tr.querySelector(".end-input").value || "23:59";
+    lines.push(`  - days: [${day}]`);
+    lines.push(`    start: "${start}"`);
+    lines.push(`    end: "${end}"`);
+    lines.push(`    mode: "${mode}"`);
+  });
+  if (!any) lines.push("  []");
+  return lines.join("\n") + "\n";
+}
+
+function replaceCadence(workflowText, minutes) {
+  return workflowText.replace(/cron:\s*"\*\/\d+ \* \* \* \*"/, `cron: "*/${minutes} * * * *"`);
+}
+
+async function loadAll() {
+  setStatus("pending", "Chargement…");
+  try {
+    const [cfg, wf] = await Promise.all([ghGet(CONFIG_PATH), ghGet(WORKFLOW_PATH)]);
+    parseConfig(cfg.content);
+    parseCadence(wf.content);
+    $("schedule-card").style.display = "block";
+    setStatus("ok", "Planning actuel chargé.");
+    localStorage.setItem("midrag_pat", $("pat").value.trim());
+    localStorage.setItem("midrag_owner", $("owner").value.trim());
+    localStorage.setItem("midrag_repo", $("repo").value.trim());
+    localStorage.setItem("midrag_branch", $("branch").value.trim());
+  } catch (e) {
+    setStatus("err", e.message);
+  }
+}
+
+async function saveAll() {
+  setStatus("pending", "Enregistrement…");
+  $("save-btn").disabled = true;
+  try {
+    const cfg = await ghGet(CONFIG_PATH);
+    await ghPut(CONFIG_PATH, buildConfigYaml(), cfg.sha, "Update schedule via config page");
+
+    const wf = await ghGet(WORKFLOW_PATH);
+    const newWf = replaceCadence(wf.content, $("cadence").value);
+    if (newWf !== wf.content) {
+      await ghPut(WORKFLOW_PATH, newWf, wf.sha, "Update refresh cadence via config page");
+    }
+    setStatus("ok", "Planning enregistré ✔");
+  } catch (e) {
+    setStatus("err", e.message);
+  } finally {
+    $("save-btn").disabled = false;
+  }
+}
+
+async function runNow() {
+  setStatus("pending", "Déclenchement du workflow…");
+  $("run-btn").disabled = true;
+  try {
+    const branch = $("branch").value.trim();
+    const res = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${$("pat").value.trim()}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: branch }),
+    });
+    if (!res.ok) throw new Error(`Échec du déclenchement (${res.status}) — vérifie que le jeton a le scope Actions: Read and write.`);
+    setStatus("ok", "Exécution déclenchée ✔ (voir l'onglet Actions du repo dans ~30s)");
+  } catch (e) {
+    setStatus("err", e.message);
+  } finally {
+    $("run-btn").disabled = false;
+  }
+}
+
+buildDaysTable();
+
+const savedPat = localStorage.getItem("midrag_pat");
+if (savedPat) {
+  $("pat").value = savedPat;
+  $("owner").value = localStorage.getItem("midrag_owner") || $("owner").value;
+  $("repo").value = localStorage.getItem("midrag_repo") || $("repo").value;
+  $("branch").value = localStorage.getItem("midrag_branch") || $("branch").value;
+  loadAll();
+}
+
+$("connect-btn").addEventListener("click", loadAll);
+$("save-btn").addEventListener("click", saveAll);
+$("run-btn").addEventListener("click", runNow);
+</script>
+
+</body>
+</html>

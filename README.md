@@ -50,11 +50,29 @@ environ **une fois par mois**, au lieu de pointer toutes les heures.
   d'échec GitHub Actions signalant une expiration), remplace juste la
   valeur de ce même secret.
 
-### 3. Planning
+### 3. Planning — page de configuration
 
-Édite `midrag_bot/config.yaml` directement depuis l'appli GitHub mobile
-(ouvrir le fichier → crayon pour éditer → commit) pour changer tes
-horaires ou le mode, quand tu veux, depuis ton téléphone.
+Une page dédiée (`docs/index.html`, hébergée via GitHub Pages) permet de
+régler le planning hebdomadaire et la cadence de réactualisation depuis
+un calendrier, sans toucher au YAML à la main :
+
+1. Active GitHub Pages : `Settings` → `Pages` → Source = "Deploy from a
+   branch" → branche `claude/midrag-availability-automation-fn3mav` →
+   dossier `/docs` → Save. L'URL de la page apparaît en haut de cet écran
+   après quelques instants (souvent `https://<owner>.github.io/Midrag/`).
+2. Crée un jeton d'accès GitHub scopé à ce seul repo : `Settings` (de ton
+   compte) → `Developer settings` → `Personal access tokens` →
+   `Fine-grained tokens` → `Generate new token`. Repository access :
+   uniquement `Midrag`. Permissions : `Contents: Read and write` (+
+   `Actions: Read and write` si tu veux le bouton "Lancer maintenant").
+3. Ouvre la page GitHub Pages sur ton téléphone, colle ce jeton (il reste
+   stocké uniquement dans ton navigateur), et règle ton planning +
+   cadence directement depuis le calendrier. "Enregistrer" pousse les
+   changements sur GitHub à ta place.
+
+Cette page réécrit entièrement `config.yaml` et la ligne de cadence du
+workflow à chaque sauvegarde — évite de les éditer à la main en dehors de
+la page si tu veux garder tes changements.
 
 ### 4. C'est tout
 
