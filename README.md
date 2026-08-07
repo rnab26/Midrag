@@ -6,10 +6,11 @@ avoir à cliquer toutes les heures.
 
 ## Comment ça marche
 
-- `midrag_bot/config.yaml` : tu y définis tes plages horaires (jours, heure
-  de début/fin) et le mode voulu pour chacune (`now` = disponible
-  maintenant, `today` = disponible aujourd'hui, `tomorrow` = disponible
-  demain, `unavailable` = pas disponible).
+- `midrag_bot/config.yaml` : tu y définis des plages par **date précise**
+  (pas de récurrence hebdomadaire — chaque jour se règle individuellement)
+  avec heure de début/fin et le mode voulu (`now` = disponible maintenant,
+  `today` = disponible aujourd'hui, `tomorrow` = disponible demain,
+  `unavailable` = pas disponible).
 - `midrag_bot/bot.py` : à chaque exécution, regarde l'heure actuelle, la
   compare à `config.yaml`, et si on est dans une plage active, appelle
   l'API Midrag (`SetSliderStatus`) pour repointer le niveau correspondant
@@ -53,8 +54,9 @@ environ **une fois par mois**, au lieu de pointer toutes les heures.
 ### 3. Planning — page de configuration
 
 Une page dédiée (`docs/index.html`, hébergée via GitHub Pages) permet de
-régler le planning hebdomadaire et la cadence de réactualisation depuis
-un calendrier, sans toucher au YAML à la main :
+régler le planning — jour par jour, par vraies dates (aujourd'hui,
+demain, etc., calées sur le fuseau Asia/Jerusalem) — et la cadence de
+réactualisation, sans toucher au YAML à la main :
 
 1. Active GitHub Pages : `Settings` → `Pages` → Source = "Deploy from a
    branch" → branche `claude/midrag-availability-automation-fn3mav` →

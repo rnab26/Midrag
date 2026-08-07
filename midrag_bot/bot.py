@@ -43,14 +43,13 @@ MODE_TO_LEVEL = {
 
 @dataclass
 class Window:
-    days: set[str]
+    date: str  # YYYY-MM-DD
     start: str
     end: str
     mode: str
 
     def is_active(self, now: datetime) -> bool:
-        day_code = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][now.weekday()]
-        if day_code not in self.days:
+        if now.strftime("%Y-%m-%d") != self.date:
             return False
         current = now.strftime("%H:%M")
         return self.start <= current <= self.end
@@ -62,7 +61,7 @@ def load_config() -> tuple[ZoneInfo, int, list[Window]]:
     tz = ZoneInfo(raw["timezone"])
     sector_id = raw["sector_id"]
     windows = [
-        Window(days=set(w["days"]), start=w["start"], end=w["end"], mode=w["mode"])
+        Window(date=w["date"], start=w["start"], end=w["end"], mode=w["mode"])
         for w in raw["schedule"]
     ]
     return tz, sector_id, windows

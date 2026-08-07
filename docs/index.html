@@ -15,6 +15,7 @@
     --accent-dark: #7d0e3d;
     --ok: #1e7e34;
     --err: #b3261e;
+    --today-bg: #fdeef4;
   }
   * { box-sizing: border-box; }
   body {
@@ -84,14 +85,31 @@
   .btn-primary:disabled, .btn-secondary:disabled {
     opacity: 0.5;
   }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 0.8rem; color: var(--muted); padding: 4px; }
-  td { padding: 6px 4px; border-top: 1px solid var(--border); }
-  .day-row td:first-child { font-weight: 600; white-space: nowrap; }
-  .day-row select, .day-row input { margin-bottom: 0; padding: 8px; font-size: 0.9rem; }
-  .times { display: none; gap: 6px; }
-  .times.active { display: flex; }
-  .times input { width: 100%; }
+  .date-row {
+    border-top: 1px solid var(--border);
+    padding: 10px 4px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .date-row.today { background: var(--today-bg); border-radius: 8px; }
+  .date-label {
+    flex: 1 1 130px;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .date-label .badge-today {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-left: 4px;
+  }
+  .date-row select { margin-bottom: 0; padding: 8px; font-size: 0.85rem; flex: 1 1 150px; }
+  .date-row .times { display: none; gap: 6px; flex: 1 1 160px; }
+  .date-row .times.active { display: flex; }
+  .date-row .times input { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
   .status {
     font-size: 0.9rem;
     margin-top: 10px;
@@ -105,23 +123,13 @@
   .status.pending { background: #eef1f3; color: var(--muted); }
   details { font-size: 0.85rem; color: var(--muted); }
   summary { cursor: pointer; color: var(--accent); font-weight: 600; }
-  .row { display: flex; gap: 8px; }
-  .row > * { flex: 1; }
   .hint { font-size: 0.8rem; color: var(--muted); margin-top: -6px; margin-bottom: 12px; }
-  .badge {
-    display: inline-block;
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #ececef;
-    color: var(--muted);
-  }
 </style>
 </head>
 <body>
 
 <h1>📅 Midrag — planning de disponibilité</h1>
-<div class="sub">Configure quand le bot doit te maintenir "disponible" automatiquement.</div>
+<div class="sub">Configure quand le bot doit te maintenir "disponible" automatiquement, jour par jour.</div>
 
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
@@ -143,15 +151,11 @@
 </div>
 
 <div class="card" id="schedule-card" style="display:none;">
-  <h2>Planning hebdomadaire</h2>
-  <table>
-    <thead>
-      <tr><th>Jour</th><th>Mode</th><th>Horaires</th></tr>
-    </thead>
-    <tbody id="days-body"></tbody>
-  </table>
+  <h2>Calendrier de disponibilité</h2>
+  <div id="dates-list"></div>
+  <button class="btn-secondary" id="more-btn" style="margin-top:12px;">+ Voir 7 jours de plus</button>
 
-  <label for="sector" style="margin-top:12px;">Secteur Midrag (sectorId)</label>
+  <label for="sector" style="margin-top:16px;">Secteur Midrag (sectorId)</label>
   <input type="number" id="sector" value="21">
 
   <label for="cadence">Fréquence de réactualisation</label>
@@ -171,15 +175,8 @@
 </div>
 
 <script>
-const DAYS = [
-  { code: "sun", label: "Dimanche" },
-  { code: "mon", label: "Lundi" },
-  { code: "tue", label: "Mardi" },
-  { code: "wed", label: "Mercredi" },
-  { code: "thu", label: "Jeudi" },
-  { code: "fri", label: "Vendredi" },
-  { code: "sat", label: "Samedi" },
-];
+const DAY_NAMES = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+const MONTH_NAMES = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const MODES = [
   { value: "", label: "— Ne rien faire —" },
   { value: "now", label: "Disponible maintenant" },
@@ -189,13 +186,33 @@ const MODES = [
 ];
 const CONFIG_PATH = "midrag_bot/config.yaml";
 const WORKFLOW_PATH = ".github/workflows/midrag-availability.yml";
+const INITIAL_DAYS = 14;
+const EXTEND_DAYS = 7;
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
+let visibleDates = [];
 
 function setStatus(kind, msg) {
   statusEl.className = "status show " + kind;
   statusEl.textContent = msg;
+}
+
+function todayJerusalem() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+}
+
+function addDaysStr(dateStr, n) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return `${DAY_NAMES[dt.getUTCDay()]} ${d} ${MONTH_NAMES[m - 1]}`;
 }
 
 function apiBase() {
@@ -239,33 +256,44 @@ async function ghPut(path, content, sha, message) {
   return res.json();
 }
 
-function buildDaysTable() {
-  const tbody = $("days-body");
-  tbody.innerHTML = "";
-  for (const day of DAYS) {
-    const tr = document.createElement("tr");
-    tr.className = "day-row";
-    tr.dataset.day = day.code;
-    tr.innerHTML = `
-      <td>${day.label}</td>
-      <td>
-        <select class="mode-select">
-          ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
-        </select>
-      </td>
-      <td>
-        <div class="times">
-          <input type="time" class="start-input" value="08:00">
-          <input type="time" class="end-input" value="20:00">
-        </div>
-      </td>
-    `;
-    tbody.appendChild(tr);
-    const select = tr.querySelector(".mode-select");
-    const times = tr.querySelector(".times");
-    select.addEventListener("change", () => {
-      times.classList.toggle("active", select.value !== "");
-    });
+function addDateRow(dateStr) {
+  const list = $("dates-list");
+  const row = document.createElement("div");
+  row.className = "date-row" + (dateStr === todayJerusalem() ? " today" : "");
+  row.dataset.date = dateStr;
+  const todayBadge = dateStr === todayJerusalem() ? '<span class="badge-today">AUJOURD\'HUI</span>' : "";
+  row.innerHTML = `
+    <div class="date-label">${formatDateLabel(dateStr)}${todayBadge}</div>
+    <select class="mode-select">
+      ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
+    </select>
+    <div class="times">
+      <input type="time" class="start-input" value="08:00">
+      <input type="time" class="end-input" value="20:00">
+    </div>
+  `;
+  list.appendChild(row);
+  const select = row.querySelector(".mode-select");
+  const times = row.querySelector(".times");
+  select.addEventListener("change", () => {
+    times.classList.toggle("active", select.value !== "");
+  });
+}
+
+function appendDates(count) {
+  let next = visibleDates.length ? addDaysStr(visibleDates[visibleDates.length - 1], 1) : todayJerusalem();
+  for (let i = 0; i < count; i++) {
+    addDateRow(next);
+    visibleDates.push(next);
+    next = addDaysStr(next, 1);
+  }
+}
+
+function ensureDateVisible(dateStr) {
+  let guard = 0;
+  while (visibleDates.length && dateStr > visibleDates[visibleDates.length - 1] && guard < 500) {
+    appendDates(EXTEND_DAYS);
+    guard++;
   }
 }
 
@@ -273,24 +301,23 @@ function parseConfig(yamlText) {
   const sectorMatch = yamlText.match(/sector_id:\s*(\d+)/);
   if (sectorMatch) $("sector").value = sectorMatch[1];
 
-  const windowRe = /-\s*days:\s*\[([^\]]*)\]\s*\n\s*start:\s*"([^"]*)"\s*\n\s*end:\s*"([^"]*)"\s*\n\s*mode:\s*"([^"]*)"/g;
-  const byDay = {};
+  const windowRe = /-\s*date:\s*"([^"]*)"\s*\n\s*start:\s*"([^"]*)"\s*\n\s*end:\s*"([^"]*)"\s*\n\s*mode:\s*"([^"]*)"/g;
+  const byDate = {};
   let m;
   while ((m = windowRe.exec(yamlText)) !== null) {
-    const days = m[1].split(",").map(s => s.trim()).filter(Boolean);
-    for (const d of days) byDay[d] = { start: m[2], end: m[3], mode: m[4] };
+    byDate[m[1]] = { start: m[2], end: m[3], mode: m[4] };
   }
 
-  document.querySelectorAll(".day-row").forEach(tr => {
-    const day = tr.dataset.day;
-    const select = tr.querySelector(".mode-select");
-    const times = tr.querySelector(".times");
-    const startInput = tr.querySelector(".start-input");
-    const endInput = tr.querySelector(".end-input");
-    if (byDay[day]) {
-      select.value = byDay[day].mode;
-      startInput.value = byDay[day].start;
-      endInput.value = byDay[day].end;
+  for (const dateStr of Object.keys(byDate)) ensureDateVisible(dateStr);
+
+  document.querySelectorAll(".date-row").forEach(row => {
+    const info = byDate[row.dataset.date];
+    const select = row.querySelector(".mode-select");
+    const times = row.querySelector(".times");
+    if (info) {
+      select.value = info.mode;
+      row.querySelector(".start-input").value = info.start;
+      row.querySelector(".end-input").value = info.end;
       times.classList.add("active");
     } else {
       select.value = "";
@@ -317,14 +344,13 @@ function buildConfigYaml() {
     "schedule:",
   ];
   let any = false;
-  document.querySelectorAll(".day-row").forEach(tr => {
-    const day = tr.dataset.day;
-    const mode = tr.querySelector(".mode-select").value;
+  document.querySelectorAll(".date-row").forEach(row => {
+    const mode = row.querySelector(".mode-select").value;
     if (!mode) return;
     any = true;
-    const start = tr.querySelector(".start-input").value || "00:00";
-    const end = tr.querySelector(".end-input").value || "23:59";
-    lines.push(`  - days: [${day}]`);
+    const start = row.querySelector(".start-input").value || "00:00";
+    const end = row.querySelector(".end-input").value || "23:59";
+    lines.push(`  - date: "${row.dataset.date}"`);
     lines.push(`    start: "${start}"`);
     lines.push(`    end: "${end}"`);
     lines.push(`    mode: "${mode}"`);
@@ -397,7 +423,7 @@ async function runNow() {
   }
 }
 
-buildDaysTable();
+appendDates(INITIAL_DAYS);
 
 const savedPat = localStorage.getItem("midrag_pat");
 if (savedPat) {
@@ -411,6 +437,7 @@ if (savedPat) {
 $("connect-btn").addEventListener("click", loadAll);
 $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
+$("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
 </script>
 
 </body>
