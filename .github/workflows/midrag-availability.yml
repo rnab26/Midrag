@@ -1,0 +1,27 @@
+name: Midrag - maintien de disponibilité
+
+on:
+  schedule:
+    # Toutes les 15 minutes -> large marge avant l'expiration d'1h de
+    # "disponible maintenant", même si GitHub retarde parfois un run.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping-availability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install -r midrag_bot/requirements.txt
+
+      - name: Repointer la disponibilité si besoin
+        env:
+          MIDRAG_EMAIL: ${{ secrets.MIDRAG_EMAIL }}
+          MIDRAG_PASSWORD: ${{ secrets.MIDRAG_PASSWORD }}
+        run: python midrag_bot/bot.py
