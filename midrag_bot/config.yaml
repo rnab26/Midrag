@@ -6,7 +6,4 @@ timezone: "Asia/Jerusalem"
 sector_id: 21
 
 schedule:
-  - date: "2026-08-07"
-    start: "16:00"
-    end: "20:00"
-    mode: "now"
+  []
