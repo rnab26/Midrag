@@ -10,7 +10,3 @@ schedule:
     start: "16:00"
     end: "20:00"
     mode: "now"
-  - date: "2026-08-08"
-    start: "00:00"
-    end: "21:00"
-    mode: "unavailable"
