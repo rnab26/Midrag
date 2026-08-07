@@ -1,29 +1,16 @@
 # Configuration du bot de disponibilité Midrag
-#
-# Ce fichier est géré par la page docs/index.html (calendrier par dates
-# réelles) — modifie-le via cette page plutôt qu'à la main.
-#
-# Fuseau horaire utilisé pour interpréter les horaires ci-dessous.
+# Généré par la page docs/index.html — modifie via cette page plutôt qu'à la main.
+
 timezone: "Asia/Jerusalem"
 
-# Secteur Midrag à cibler (visible dans l'URL: ?sectorId=21)
 sector_id: 21
 
-# Liste de plages, une par date précise (pas de récurrence hebdomadaire).
-# Le bot tourne toutes les ~15 minutes et, à chaque exécution, regarde si
-# la date+heure actuelle tombe dans une des plages ci-dessous. Si oui, il
-# "repointe" le mode demandé pour toi.
-#
-# mode:
-#   "now"         -> maintient "פנוי עכשיו" / disponible maintenant
-#   "today"       -> maintient "פנוי היום" / disponible aujourd'hui
-#   "tomorrow"    -> maintient "פנוי מחר" / disponible demain
-#   "unavailable" -> maintient "לא פנוי" / pas disponible
-#
-# Exemple:
-# schedule:
-#   - date: "2026-08-07"
-#     start: "16:00"
-#     end: "20:00"
-#     mode: "now"
-schedule: []
+schedule:
+  - date: "2026-08-07"
+    start: "16:00"
+    end: "20:00"
+    mode: "now"
+  - date: "2026-08-08"
+    start: "00:00"
+    end: "21:00"
+    mode: "unavailable"
