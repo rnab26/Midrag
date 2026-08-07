@@ -85,7 +85,11 @@ def set_slider_status(token: str, sector_id: int, level: int) -> dict:
     resp = requests.post(
         SET_STATUS_URL,
         json={"level": level, "sectorId": sector_id},
-        headers={"Authorization": f"Bearer {token}"},
+        cookies={"accessToken": token},
+        headers={
+            "Origin": "https://bizn.midrag.co.il",
+            "Referer": "https://bizn.midrag.co.il/",
+        },
         timeout=30,
     )
     resp.raise_for_status()
