@@ -230,7 +230,9 @@ function apiBase() {
 
 async function ghGet(path) {
   const branch = $("branch").value.trim();
-  const res = await fetch(`${apiBase()}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
+  const cacheBust = Date.now();
+  const res = await fetch(`${apiBase()}/contents/${path}?ref=${encodeURIComponent(branch)}&_=${cacheBust}`, {
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${$("pat").value.trim()}`,
       Accept: "application/vnd.github+json",
