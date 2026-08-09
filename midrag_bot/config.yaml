@@ -7,7 +7,7 @@ sector_id: 21
 
 schedule:
   - date: "2026-08-09"
-    start: "09:00"
+    start: "10:00"
     end: "14:00"
     mode: "now"
   - date: "2026-08-10"
