@@ -85,19 +85,15 @@
   .btn-primary:disabled, .btn-secondary:disabled {
     opacity: 0.5;
   }
-  .date-row {
+  .date-block {
     border-top: 1px solid var(--border);
     padding: 10px 4px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
   }
-  .date-row.today { background: var(--today-bg); border-radius: 8px; }
+  .date-block.today { background: var(--today-bg); border-radius: 8px; }
   .date-label {
-    flex: 1 1 130px;
     font-weight: 600;
     font-size: 0.9rem;
+    margin-bottom: 6px;
   }
   .date-label .badge-today {
     display: inline-block;
@@ -106,11 +102,18 @@
     color: var(--accent);
     margin-left: 4px;
   }
-  .date-row select { margin-bottom: 0; padding: 8px; font-size: 0.85rem; flex: 1 1 150px; }
-  .date-row .times { display: none; flex-direction: column; gap: 4px; flex: 1 1 200px; }
-  .date-row .times.active { display: flex; }
-  .date-row .time-inputs { display: flex; gap: 6px; }
-  .date-row .times input[type=time] { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
+  .slot-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .slot-row select { margin-bottom: 0; padding: 8px; font-size: 0.85rem; flex: 1 1 150px; }
+  .slot-row .times { display: none; flex-direction: column; gap: 4px; flex: 1 1 190px; }
+  .slot-row .times.active { display: flex; }
+  .slot-row .time-inputs { display: flex; gap: 6px; }
+  .slot-row .times input[type=time] { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
   .full-day-label {
     display: flex;
     align-items: center;
@@ -119,6 +122,24 @@
     color: var(--muted);
   }
   .full-day-label input { width: auto; margin: 0; }
+  .remove-slot-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    width: auto;
+  }
+  .remove-slot-btn:disabled { visibility: hidden; }
+  .add-slot-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--accent);
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    width: auto;
+    border-radius: 8px;
+  }
   .status {
     font-size: 0.9rem;
     margin-top: 10px;
@@ -155,12 +176,13 @@
   <details>
     <summary>Comment créer ce jeton ?</summary>
     <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
-    <p>Repository access : seulement "Midrag". Permissions : <strong>Contents: Read and write</strong> (et <strong>Actions: Read and write</strong> si tu veux le bouton "Lancer maintenant" ci-dessous). Copie le jeton généré et colle-le ici.</p>
+    <p>Repository access : seulement "Midrag". Permissions : <strong>Contents: Read and write</strong>, <strong>Workflows: Read and write</strong> (et <strong>Actions: Read and write</strong> si tu veux le bouton "Lancer maintenant" ci-dessous). Copie le jeton généré et colle-le ici.</p>
   </details>
 </div>
 
 <div class="card" id="schedule-card" style="display:none;">
   <h2>Calendrier de disponibilité</h2>
+  <div class="hint" style="margin-top:0;">Tu peux ajouter plusieurs créneaux sur une même journée (ex: 10h-14h puis 18h-21h) avec "+ Ajouter un créneau". En dehors des créneaux configurés, le bot ne touche à rien — Midrag applique alors sa propre expiration automatique (voir l'explication dans le chat).</div>
   <div id="dates-list"></div>
   <button class="btn-secondary" id="more-btn" style="margin-top:12px;">+ Voir 7 jours de plus</button>
 
@@ -174,8 +196,10 @@
     <option value="15" selected>Toutes les 15 minutes</option>
     <option value="20">Toutes les 20 minutes</option>
     <option value="30">Toutes les 30 minutes</option>
+    <option value="45">Toutes les 45 minutes</option>
+    <option value="60">Toutes les heures</option>
   </select>
-  <div class="hint">Doit rester bien en dessous d'1h (l'expiration de "disponible maintenant"). 15 min laisse une bonne marge.</div>
+  <div class="hint">Doit rester bien en dessous d'1h (l'expiration de "disponible maintenant"). 15 min laisse une bonne marge ; 45/60 min laissent moins de marge en cas de délai GitHub.</div>
 
   <button class="btn-primary" id="save-btn">Enregistrer le planning</button>
   <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
@@ -267,14 +291,18 @@ async function ghPut(path, content, sha, message) {
   return res.json();
 }
 
-function addDateRow(dateStr) {
-  const list = $("dates-list");
-  const row = document.createElement("div");
-  row.className = "date-row" + (dateStr === todayJerusalem() ? " today" : "");
-  row.dataset.date = dateStr;
-  const todayBadge = dateStr === todayJerusalem() ? '<span class="badge-today">AUJOURD\'HUI</span>' : "";
-  row.innerHTML = `
-    <div class="date-label">${formatDateLabel(dateStr)}${todayBadge}</div>
+function updateRemoveButtons(dateBlock) {
+  const rows = dateBlock.querySelectorAll(".slot-row");
+  rows.forEach(r => {
+    r.querySelector(".remove-slot-btn").disabled = rows.length <= 1;
+  });
+}
+
+function addSlot(dateBlock, data) {
+  const slots = dateBlock.querySelector(".slots");
+  const slot = document.createElement("div");
+  slot.className = "slot-row";
+  slot.innerHTML = `
     <select class="mode-select">
       ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
     </select>
@@ -288,24 +316,60 @@ function addDateRow(dateStr) {
         <input type="time" class="end-input" value="20:00">
       </div>
     </div>
+    <button type="button" class="remove-slot-btn" title="Supprimer ce créneau">✕</button>
   `;
-  list.appendChild(row);
-  const select = row.querySelector(".mode-select");
-  const times = row.querySelector(".times");
-  const fullDay = row.querySelector(".full-day-check");
-  const timeInputs = row.querySelector(".time-inputs");
+  slots.appendChild(slot);
+
+  const select = slot.querySelector(".mode-select");
+  const times = slot.querySelector(".times");
+  const fullDay = slot.querySelector(".full-day-check");
+  const timeInputs = slot.querySelector(".time-inputs");
+  const removeBtn = slot.querySelector(".remove-slot-btn");
+
   select.addEventListener("change", () => {
     times.classList.toggle("active", select.value !== "");
   });
   fullDay.addEventListener("change", () => {
     timeInputs.style.display = fullDay.checked ? "none" : "flex";
   });
+  removeBtn.addEventListener("click", () => {
+    slot.remove();
+    updateRemoveButtons(dateBlock);
+  });
+
+  if (data) {
+    select.value = data.mode;
+    slot.querySelector(".start-input").value = data.start;
+    slot.querySelector(".end-input").value = data.end;
+    times.classList.add("active");
+    const isFullDay = data.start === "00:00" && data.end === "23:59";
+    fullDay.checked = isFullDay;
+    timeInputs.style.display = isFullDay ? "none" : "flex";
+  }
+
+  updateRemoveButtons(dateBlock);
+}
+
+function addDateBlock(dateStr) {
+  const list = $("dates-list");
+  const block = document.createElement("div");
+  block.className = "date-block" + (dateStr === todayJerusalem() ? " today" : "");
+  block.dataset.date = dateStr;
+  const todayBadge = dateStr === todayJerusalem() ? '<span class="badge-today">AUJOURD\'HUI</span>' : "";
+  block.innerHTML = `
+    <div class="date-label">${formatDateLabel(dateStr)}${todayBadge}</div>
+    <div class="slots"></div>
+    <button type="button" class="add-slot-btn">+ Ajouter un créneau</button>
+  `;
+  list.appendChild(block);
+  addSlot(block, null);
+  block.querySelector(".add-slot-btn").addEventListener("click", () => addSlot(block, null));
 }
 
 function appendDates(count) {
   let next = visibleDates.length ? addDaysStr(visibleDates[visibleDates.length - 1], 1) : todayJerusalem();
   for (let i = 0; i < count; i++) {
-    addDateRow(next);
+    addDateBlock(next);
     visibleDates.push(next);
     next = addDaysStr(next, 1);
   }
@@ -327,37 +391,39 @@ function parseConfig(yamlText) {
   const byDate = {};
   let m;
   while ((m = windowRe.exec(yamlText)) !== null) {
-    byDate[m[1]] = { start: m[2], end: m[3], mode: m[4] };
+    const d = m[1];
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push({ start: m[2], end: m[3], mode: m[4] });
   }
 
   for (const dateStr of Object.keys(byDate)) ensureDateVisible(dateStr);
 
-  document.querySelectorAll(".date-row").forEach(row => {
-    const info = byDate[row.dataset.date];
-    const select = row.querySelector(".mode-select");
-    const times = row.querySelector(".times");
-    const fullDay = row.querySelector(".full-day-check");
-    const timeInputs = row.querySelector(".time-inputs");
-    if (info) {
-      select.value = info.mode;
-      row.querySelector(".start-input").value = info.start;
-      row.querySelector(".end-input").value = info.end;
-      times.classList.add("active");
-      const isFullDay = info.start === "00:00" && info.end === "23:59";
-      fullDay.checked = isFullDay;
-      timeInputs.style.display = isFullDay ? "none" : "flex";
+  document.querySelectorAll(".date-block").forEach(block => {
+    const entries = byDate[block.dataset.date];
+    block.querySelector(".slots").innerHTML = "";
+    if (entries && entries.length) {
+      entries.forEach(e => addSlot(block, e));
     } else {
-      select.value = "";
-      times.classList.remove("active");
-      fullDay.checked = false;
-      timeInputs.style.display = "flex";
+      addSlot(block, null);
     }
   });
 }
 
 function parseCadence(workflowText) {
-  const m = workflowText.match(/cron:\s*"\*\/(\d+) \* \* \* \*"/);
-  if (m) $("cadence").value = m[1];
+  const stepMatch = workflowText.match(/cron:\s*"\*\/(\d+) \* \* \* \*"/);
+  if (stepMatch) { $("cadence").value = stepMatch[1]; return; }
+  if (/cron:\s*"0 \* \* \* \*"/.test(workflowText)) { $("cadence").value = "60"; }
+}
+
+function cronForCadence(minutes) {
+  return minutes === "60" ? "0 * * * *" : `*/${minutes} * * * *`;
+}
+
+function replaceCadence(workflowText, minutes) {
+  return workflowText.replace(
+    /cron:\s*"(\*\/\d+ \* \* \* \*|0 \* \* \* \*)"/,
+    `cron: "${cronForCadence(minutes)}"`
+  );
 }
 
 function buildConfigYaml() {
@@ -373,24 +439,23 @@ function buildConfigYaml() {
     "schedule:",
   ];
   let any = false;
-  document.querySelectorAll(".date-row").forEach(row => {
-    const mode = row.querySelector(".mode-select").value;
-    if (!mode) return;
-    any = true;
-    const fullDay = row.querySelector(".full-day-check").checked;
-    const start = fullDay ? "00:00" : (row.querySelector(".start-input").value || "00:00");
-    const end = fullDay ? "23:59" : (row.querySelector(".end-input").value || "23:59");
-    lines.push(`  - date: "${row.dataset.date}"`);
-    lines.push(`    start: "${start}"`);
-    lines.push(`    end: "${end}"`);
-    lines.push(`    mode: "${mode}"`);
+  document.querySelectorAll(".date-block").forEach(block => {
+    const date = block.dataset.date;
+    block.querySelectorAll(".slot-row").forEach(slot => {
+      const mode = slot.querySelector(".mode-select").value;
+      if (!mode) return;
+      any = true;
+      const fullDay = slot.querySelector(".full-day-check").checked;
+      const start = fullDay ? "00:00" : (slot.querySelector(".start-input").value || "00:00");
+      const end = fullDay ? "23:59" : (slot.querySelector(".end-input").value || "23:59");
+      lines.push(`  - date: "${date}"`);
+      lines.push(`    start: "${start}"`);
+      lines.push(`    end: "${end}"`);
+      lines.push(`    mode: "${mode}"`);
+    });
   });
   if (!any) lines.push("  []");
   return lines.join("\n") + "\n";
-}
-
-function replaceCadence(workflowText, minutes) {
-  return workflowText.replace(/cron:\s*"\*\/\d+ \* \* \* \*"/, `cron: "*/${minutes} * * * *"`);
 }
 
 async function loadAll() {
