@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Studio{% endblock %}
+{% block content %}
+
+<section class="grid-2">
+  <div class="card">
+    <h2>1. Visages sources</h2>
+    <p class="muted">Les photos de visage que tu veux "poser" sur une vidéo/photo cible. Sauvegardées pour être réutilisées.</p>
+    <form method="post" action="/faces/upload" enctype="multipart/form-data" class="upload-form">
+      <input type="hidden" name="kind" value="source_face">
+      <input type="text" name="label" placeholder="Nom (ex: Moi, Ami1...)">
+      <input type="file" name="file" accept="image/*" required>
+      <button type="submit">Ajouter</button>
+    </form>
+    <div class="gallery">
+      {% for f in source_faces %}
+      <div class="thumb">
+        <img src="/faces/{{ f.id }}/file" alt="{{ f.label }}">
+        <span>{{ f.label }}</span>
+      </div>
+      {% else %}
+      <p class="muted">Aucun visage source enregistré.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Médias cibles</h2>
+    <p class="muted">La photo ou vidéo dans laquelle un ou plusieurs visages seront remplacés.</p>
+    <form method="post" action="/faces/upload" enctype="multipart/form-data" class="upload-form">
+      <input type="hidden" name="kind" value="target_media">
+      <input type="text" name="label" placeholder="Nom (ex: Clip1...)">
+      <input type="file" name="file" accept="image/*,video/*" required>
+      <button type="submit">Ajouter</button>
+    </form>
+    <div class="gallery">
+      {% for m in target_media %}
+      <div class="thumb">
+        {% if m.media_type.value == 'image' %}
+        <img src="/faces/{{ m.id }}/file" alt="{{ m.label }}">
+        {% else %}
+        <video src="/faces/{{ m.id }}/file" muted></video>
+        {% endif %}
+        <span>{{ m.label }}</span>
+      </div>
+      {% else %}
+      <p class="muted">Aucun média cible enregistré.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>3. Lancer un swap</h2>
+  <form id="job-form">
+    <label>Média cible
+      <select id="target-select" required>
+        <option value="" disabled selected>Choisir un média cible…</option>
+        {% for m in target_media %}
+        <option value="{{ m.id }}">{{ m.label }} ({{ m.media_type.value }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div id="mappings"></div>
+    <button type="button" id="add-mapping">+ Ajouter un visage à remplacer (multi-visages)</button>
+
+    <div class="options">
+      <label><input type="checkbox" id="face-enhancer" checked> Amélioration qualité visage</label>
+      <label><input type="checkbox" id="lip-sync"> Correction mouvement de bouche</label>
+    </div>
+
+    <button type="submit" id="submit-job">Lancer le swap</button>
+  </form>
+  <p id="job-status" class="muted"></p>
+</section>
+
+<template id="mapping-row-template">
+  <div class="mapping-row">
+    <select class="mapping-source" required>
+      <option value="" disabled selected>Visage source…</option>
+      {% for f in source_faces %}
+      <option value="{{ f.id }}">{{ f.label }}</option>
+      {% endfor %}
+    </select>
+    <label>Visage n° dans la cible
+      <input type="number" class="mapping-index" min="0" value="0" required>
+    </label>
+    <button type="button" class="remove-mapping">✕</button>
+  </div>
+</template>
+
+<script src="/static/app.js"></script>
+{% endblock %}

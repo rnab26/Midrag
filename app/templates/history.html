@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Historique{% endblock %}
+{% block content %}
+<h1>Historique des swaps</h1>
+<div class="job-list">
+  {% for job in jobs %}
+  <div class="job-row" data-job-id="{{ job.id }}">
+    <div>
+      <strong>{{ job.target_asset.label }}</strong>
+      <span class="muted">— {{ job.face_mappings|length }} visage(s) — {{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </div>
+    <div class="job-status status-{{ job.status.value }}">{{ job.status.value }}</div>
+    {% if job.status.value == 'completed' %}
+    <a href="/jobs/{{ job.id }}/result" download>Télécharger</a>
+    {% elif job.status.value == 'failed' %}
+    <span class="error">{{ job.error }}</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">Aucun swap pour l'instant.</p>
+  {% endfor %}
+</div>
+{% endblock %}
