@@ -52,7 +52,18 @@ class Window:
         if now.strftime("%Y-%m-%d") != self.date:
             return False
         current = now.strftime("%H:%M")
-        return self.start <= current <= self.end
+        # "00:00" as an end time means "end of this day" (midnight), not
+        # "the very start of the day" — normalize so it sorts last.
+        end = "24:00" if self.end == "00:00" else self.end
+        return self.start <= current <= end
+
+    def duration_minutes(self) -> int:
+        def to_minutes(t: str) -> int:
+            h, m = t.split(":")
+            return int(h) * 60 + int(m)
+
+        end = 24 * 60 if self.end == "00:00" else to_minutes(self.end)
+        return end - to_minutes(self.start)
 
 
 def load_config() -> tuple[ZoneInfo, int, list[Window]]:
@@ -120,7 +131,12 @@ def main() -> int:
         if days_left <= 5:
             print(f"[ATTENTION] MIDRAG_TOKEN expire dans {days_left} jour(s) ({expiry.isoformat()}).")
 
-    active = next((w for w in windows if w.is_active(now)), None)
+    # Plusieurs créneaux peuvent se chevaucher pour la même date (ex: toute
+    # la journée en "now", avec une sous-plage plus précise en "today") —
+    # on privilégie le créneau le plus spécifique (le plus court) plutôt
+    # que le premier de la liste.
+    candidates = [w for w in windows if w.is_active(now)]
+    active = min(candidates, key=lambda w: w.duration_minutes()) if candidates else None
     if active is None:
         print(f"[{now.isoformat()}] Hors plage horaire configurée, rien à faire.")
         return 0
