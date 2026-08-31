@@ -62,6 +62,21 @@
     background: #fff;
     color: var(--text);
   }
+  .pat-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .pat-row input { flex: 1; margin-bottom: 12px; }
+  .pat-btn {
+    background: #ececef;
+    color: var(--text);
+    width: auto;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
   button {
     appearance: none;
     border: none;
@@ -164,7 +179,11 @@
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
   <label for="pat">Jeton d'accès GitHub (fine-grained, scope Contents R/W sur ce repo)</label>
-  <input type="password" id="pat" placeholder="github_pat_..." autocomplete="off">
+  <div class="pat-row">
+    <input type="password" id="pat" placeholder="github_pat_..." autocomplete="off">
+    <button type="button" class="pat-btn" id="pat-toggle" title="Afficher/masquer">👁</button>
+    <button type="button" class="pat-btn" id="pat-copy" title="Copier">📋</button>
+  </div>
   <label for="owner">Propriétaire du repo</label>
   <input type="text" id="owner" value="rnab26">
   <label for="repo">Nom du repo</label>
@@ -533,6 +552,23 @@ $("connect-btn").addEventListener("click", loadAll);
 $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
+
+$("pat-toggle").addEventListener("click", () => {
+  const pat = $("pat");
+  pat.type = pat.type === "password" ? "text" : "password";
+});
+
+$("pat-copy").addEventListener("click", async () => {
+  const btn = $("pat-copy");
+  try {
+    await navigator.clipboard.writeText($("pat").value);
+    const original = btn.textContent;
+    btn.textContent = "✔";
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  } catch (e) {
+    setStatus("err", "Copie impossible sur ce navigateur — sélectionne et copie manuellement le texte.");
+  }
+});
 </script>
 
 </body>
