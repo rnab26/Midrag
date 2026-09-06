@@ -270,6 +270,16 @@
   </select>
   <div class="hint">Doit rester bien en dessous d'1h (l'expiration de "disponible maintenant"). 15 min laisse une bonne marge ; 45/60 min laissent moins de marge en cas de délai GitHub.</div>
 
+  <label for="alert-days">Prévenir avant l'expiration du token</label>
+  <select id="alert-days">
+    <option value="1">1 jour avant</option>
+    <option value="2">2 jours avant</option>
+    <option value="3" selected>3 jours avant</option>
+    <option value="5">5 jours avant</option>
+    <option value="7">7 jours avant</option>
+  </select>
+  <div class="hint">À partir de ce délai, le bot ouvre une issue d'avertissement — une seule, refermée toute seule dès que le token est renouvelé. Sans ça, tu n'es prévenu qu'une fois la disponibilité déjà tombée.</div>
+
   <button class="btn-primary" id="save-btn">Enregistrer le planning</button>
   <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
 
@@ -287,6 +297,7 @@ const MODES = [
   { value: "unavailable", label: "Pas disponible" },
 ];
 const CONFIG_PATH = "midrag_bot/config.yaml";
+const DEFAULT_ALERT_DAYS = "3";
 const WORKFLOW_PATH = ".github/workflows/midrag-availability.yml";
 const INITIAL_DAYS = 14;
 const EXTEND_DAYS = 7;
@@ -456,6 +467,11 @@ function parseConfig(yamlText) {
   const sectorMatch = yamlText.match(/sector_id:\s*(\d+)/);
   if (sectorMatch) $("sector").value = sectorMatch[1];
 
+  const alertMatch = yamlText.match(/token_alert_days:\s*(\d+)/);
+  $("alert-days").value = alertMatch && $("alert-days").querySelector(`option[value="${alertMatch[1]}"]`)
+    ? alertMatch[1]
+    : DEFAULT_ALERT_DAYS;
+
   const windowRe = /-\s*date:\s*"([^"]*)"\s*\n\s*start:\s*"([^"]*)"\s*\n\s*end:\s*"([^"]*)"\s*\n\s*mode:\s*"([^"]*)"/g;
   const byDate = {};
   let m;
@@ -504,6 +520,10 @@ function buildConfigYaml() {
     'timezone: "Asia/Jerusalem"',
     "",
     `sector_id: ${sectorId}`,
+    "",
+    "# Combien de jours avant l'expiration du token Midrag une issue",
+    "# d'avertissement est ouverte (réglable depuis la page de configuration).",
+    `token_alert_days: ${$("alert-days").value || DEFAULT_ALERT_DAYS}`,
     "",
     "schedule:",
   ];

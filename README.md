@@ -104,6 +104,16 @@ La carte "État du bot" de la page de configuration montre la même
 information (dernière exécution, alerte en cours, date d'expiration du
 token).
 
+### Avant que le bot soit bloqué
+
+La date d'expiration du token est connue à l'avance : inutile d'attendre
+que la disponibilité décroche pour prévenir. Quand il reste moins de
+`token_alert_days` jours (3 par défaut, réglable depuis la page de
+configuration — "Prévenir avant l'expiration du token"), le bot ouvre
+**une** issue `🔑 Bot Midrag : le token Midrag expire bientôt`, muette
+ensuite comme celle de panne, et refermée automatiquement dès que le
+token est renouvelé.
+
 ## ⚠️ Point d'attention
 
 Automatiser des actions sur une plateforme tierce peut être contraire à

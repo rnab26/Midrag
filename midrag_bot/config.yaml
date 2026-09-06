@@ -5,6 +5,10 @@ timezone: "Asia/Jerusalem"
 
 sector_id: 21
 
+# Combien de jours avant l'expiration du token Midrag une issue
+# d'avertissement est ouverte (réglable depuis la page de configuration).
+token_alert_days: 3
+
 schedule:
   - date: "2026-08-30"
     start: "00:00"

@@ -37,6 +37,10 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
 
 SET_STATUS_URL = "https://biz-api.midrag.co.il/SliderAvailability/SetSliderStatus"
 
+# Combien de jours avant l'expiration du token on prévient, si config.yaml ne
+# le précise pas (réglable depuis la page de configuration).
+DEFAULT_ALERT_DAYS = 3
+
 # Correspondance entre les modes du config.yaml et les niveaux attendus par
 # l'API Midrag (confirmé via capture réseau du curseur du site).
 MODE_TO_LEVEL = {
@@ -72,16 +76,17 @@ class Window:
         return end - to_minutes(self.start)
 
 
-def load_config() -> tuple[ZoneInfo, int, list[Window]]:
+def load_config() -> tuple[ZoneInfo, int, int, list[Window]]:
     with open(CONFIG_PATH, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     tz = ZoneInfo(raw["timezone"])
     sector_id = raw["sector_id"]
+    alert_days = int(raw.get("token_alert_days", DEFAULT_ALERT_DAYS))
     windows = [
         Window(date=w["date"], start=w["start"], end=w["end"], mode=w["mode"])
-        for w in raw["schedule"]
+        for w in raw["schedule"] or []
     ]
-    return tz, sector_id, windows
+    return tz, sector_id, alert_days, windows
 
 
 def token_expiry(token: str) -> datetime | None:
@@ -127,6 +132,11 @@ def set_slider_status(token: str, sector_id: int, level: int) -> dict:
 
 ISSUE_TITLE = "⚠️ Bot Midrag : la disponibilité n'est plus maintenue"
 
+# Avertissement AVANT la panne: le token a une date d'expiration connue, donc
+# rien n'oblige à attendre que la disponibilité décroche pour prévenir. Issue
+# séparée de celle de panne: ici le bot travaille encore normalement.
+EXPIRY_ISSUE_TITLE = "🔑 Bot Midrag : le token Midrag expire bientôt"
+
 GITHUB_API = "https://api.github.com"
 
 
@@ -146,7 +156,9 @@ def _github_session() -> tuple[requests.Session, str] | None:
     return session, repo
 
 
-def _find_open_issue(session: requests.Session, repo: str) -> dict | None:
+def _find_open_issue(
+    session: requests.Session, repo: str, title: str = ISSUE_TITLE
+) -> dict | None:
     resp = session.get(
         f"{GITHUB_API}/repos/{repo}/issues",
         params={"state": "open", "per_page": 100},
@@ -154,7 +166,7 @@ def _find_open_issue(session: requests.Session, repo: str) -> dict | None:
     )
     resp.raise_for_status()
     for issue in resp.json():
-        if issue.get("title") == ISSUE_TITLE and "pull_request" not in issue:
+        if issue.get("title") == title and "pull_request" not in issue:
             return issue
     return None
 
@@ -228,13 +240,82 @@ def clear_failure() -> None:
         print(f"Impossible de refermer l'issue de suivi : {exc}", file=sys.stderr)
 
 
+def warn_expiry(expiry: datetime, tz: ZoneInfo, alert_days: int) -> None:
+    """Ouvre l'issue d'avertissement si elle n'est pas déjà ouverte.
+
+    Comme pour la panne: une seule issue, silencieuse tant qu'elle est
+    ouverte, pour ne pas rejouer une notification à chaque quart d'heure."""
+    remaining = expiry - datetime.now(timezone.utc)
+    hours = remaining.total_seconds() / 3600
+    delay = f"{hours:.0f} h" if hours < 48 else f"{int(hours // 24)} jours"
+    print(
+        f"[ATTENTION] MIDRAG_TOKEN expire dans {delay} ({expiry.isoformat()})."
+    )
+
+    ctx = _github_session()
+    if ctx is None:
+        return
+    session, repo = ctx
+    try:
+        if _find_open_issue(session, repo, EXPIRY_ISSUE_TITLE) is not None:
+            return
+        body = (
+            f"Le token Midrag expire le **{expiry.astimezone(tz):%d/%m/%Y à %H:%M}** "
+            f"(heure d'Israël), soit dans {delay}.\n\n"
+            "La disponibilité est encore maintenue normalement jusque-là, mais elle "
+            "décrochera à cette date si le token n'est pas renouvelé d'ici là.\n\n"
+            "**Quoi faire :** ouvrir la page de planning, coller un token Midrag frais "
+            "(procédure de capture dans le README) et enregistrer.\n\n"
+            f"Cette issue se fermera automatiquement dès que le token sera renouvelé. "
+            f"Le délai d'avertissement ({alert_days} jours) se règle depuis la page de "
+            "configuration.\n"
+        )
+        resp = session.post(
+            f"{GITHUB_API}/repos/{repo}/issues",
+            json={"title": EXPIRY_ISSUE_TITLE, "body": body},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        print(f"Issue d'avertissement ouverte : {resp.json()['html_url']}")
+    except Exception as exc:  # noqa: BLE001 - best effort, ne doit jamais casser le run
+        print(f"Impossible d'ouvrir l'issue d'avertissement : {exc}", file=sys.stderr)
+
+
+def clear_expiry_warning(comment: str) -> None:
+    """Referme l'issue d'avertissement (token renouvelé, ou panne déjà
+    signalée par l'issue dédiée)."""
+    ctx = _github_session()
+    if ctx is None:
+        return
+    session, repo = ctx
+    try:
+        issue = _find_open_issue(session, repo, EXPIRY_ISSUE_TITLE)
+        if issue is None:
+            return
+        number = issue["number"]
+        session.post(
+            f"{GITHUB_API}/repos/{repo}/issues/{number}/comments",
+            json={"body": comment},
+            timeout=30,
+        )
+        resp = session.patch(
+            f"{GITHUB_API}/repos/{repo}/issues/{number}",
+            json={"state": "closed", "state_reason": "completed"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        print(f"Issue d'avertissement #{number} refermée.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Impossible de refermer l'issue d'avertissement : {exc}", file=sys.stderr)
+
+
 def main() -> int:
     token = os.environ.get("MIDRAG_TOKEN")
     if not token:
         report_failure("Le secret `MIDRAG_TOKEN` est absent de l'environnement du workflow.")
         return 0
 
-    tz, sector_id, windows = load_config()
+    tz, sector_id, alert_days, windows = load_config()
     now = datetime.now(tz)
 
     expiry = token_expiry(token)
@@ -245,9 +326,16 @@ def main() -> int:
                 f"Le token Midrag a expiré le {expiry.astimezone(tz):%d/%m/%Y à %H:%M} "
                 "(heure d'Israël). Il faut se reconnecter à Midrag et en fournir un nouveau."
             )
+            # L'issue de panne dit désormais tout: garder l'avertissement
+            # ouvert en plus ferait deux fils pour un seul problème.
+            clear_expiry_warning(
+                "⛔ Le token a expiré — le suivi continue dans l'issue de panne."
+            )
             return 0
-        if remaining.days <= 5:
-            print(f"[ATTENTION] MIDRAG_TOKEN expire dans {remaining.days} jour(s) ({expiry.isoformat()}).")
+        if remaining.total_seconds() <= alert_days * 86400:
+            warn_expiry(expiry, tz, alert_days)
+        else:
+            clear_expiry_warning("✅ Token renouvelé, l'échéance est repoussée.")
 
     # Plusieurs créneaux peuvent se chevaucher pour la même date (ex: toute
     # la journée en "now", avec une sous-plage plus précise en "today") —
