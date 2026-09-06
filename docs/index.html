@@ -169,6 +169,30 @@
   details { font-size: 0.85rem; color: var(--muted); }
   summary { cursor: pointer; color: var(--accent); font-weight: 600; }
   .hint { font-size: 0.8rem; color: var(--muted); margin-top: 6px; margin-bottom: 12px; }
+  .state-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+  }
+  .state-line:last-of-type { border-bottom: none; }
+  .state-line .k { color: var(--muted); }
+  .state-line .v { font-weight: 600; text-align: right; }
+  .v.ok { color: var(--ok); }
+  .v.err { color: var(--err); }
+  .v.warn { color: #b26a00; }
+  .banner {
+    background: #fbe9e7;
+    color: var(--err);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+  }
+  .banner a { color: inherit; }
 </style>
 </head>
 <body>
@@ -197,6 +221,32 @@
     <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
     <p>Repository access : seulement "Midrag". Permissions : <strong>Contents: Read and write</strong>, <strong>Workflows: Read and write</strong> (et <strong>Actions: Read and write</strong> si tu veux le bouton "Lancer maintenant" ci-dessous). Copie le jeton généré et colle-le ici.</p>
   </details>
+</div>
+
+<div class="card" id="state-card" style="display:none;">
+  <h2>État du bot</h2>
+  <div id="state-banner" class="banner" style="display:none;"></div>
+  <div class="state-line"><span class="k">Dernière exécution</span><span class="v" id="state-run">…</span></div>
+  <div class="state-line"><span class="k">Token Midrag</span><span class="v" id="state-token">…</span></div>
+  <button class="btn-secondary" id="refresh-state-btn" style="margin-top:12px;">Rafraîchir l'état</button>
+</div>
+
+<div class="card" id="token-card" style="display:none;">
+  <h2>Renouveler le token Midrag</h2>
+  <div class="hint" style="margin-top:0;">Le token Midrag dure quelques semaines. Quand il expire, le bot s'arrête de lui-même et ouvre une alerte. Colle ici le token frais : il est chiffré dans ce navigateur puis envoyé directement dans le secret GitHub — il n'est jamais écrit dans le repo, ni conservé sur cette page.</div>
+  <label for="midrag-token">Nouveau token Midrag</label>
+  <div class="pat-row">
+    <input type="password" id="midrag-token" placeholder="eyJhbGciOi..." autocomplete="off">
+    <button type="button" class="pat-btn" id="midrag-token-toggle" title="Afficher/masquer">👁</button>
+  </div>
+  <div class="hint" id="midrag-token-preview"></div>
+  <button class="btn-primary" id="save-token-btn">Enregistrer le token et tester</button>
+  <details>
+    <summary>Où trouver ce token ?</summary>
+    <p>Connecte-toi sur <strong>bizn.midrag.co.il</strong> (téléphone + n° d'entreprise + code SMS) avec les outils développeur ouverts (F12) → onglet <em>Network</em>, filtre <em>Fetch/XHR</em> → requête <code>Token</code> → onglet <em>Response</em> → copie la valeur de <code>data.token</code> (elle commence par <code>eyJ</code>). Procédure détaillée dans le README.</p>
+    <p>Le jeton GitHub ci-dessus doit avoir la permission <strong>Secrets: Read and write</strong> pour que ce bouton fonctionne, et <strong>Issues: Read and write</strong> + <strong>Actions: Read and write</strong> pour l'état ci-dessus.</p>
+  </details>
+  <div class="status" id="token-status"></div>
 </div>
 
 <div class="card" id="schedule-card" style="display:none;">
@@ -484,7 +534,9 @@ async function loadAll() {
     parseConfig(cfg.content);
     parseCadence(wf.content);
     $("schedule-card").style.display = "block";
+    $("token-card").style.display = "block";
     setStatus("ok", "Planning actuel chargé.");
+    refreshState();
     localStorage.setItem("midrag_pat", $("pat").value.trim());
     localStorage.setItem("midrag_owner", $("owner").value.trim());
     localStorage.setItem("midrag_repo", $("repo").value.trim());
@@ -537,6 +589,215 @@ async function runNow() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// État du bot : dernière exécution, alerte ouverte, expiration du token Midrag.
+// Le job Actions reste vert même quand le bot est bloqué (sinon GitHub envoyait
+// un mail par exécution) — c'est donc ici et dans l'issue de suivi que le
+// problème doit se voir.
+// ---------------------------------------------------------------------------
+const ISSUE_TITLE = "⚠️ Bot Midrag : la disponibilité n'est plus maintenue";
+
+function ghHeaders() {
+  return {
+    Authorization: `Bearer ${$("pat").value.trim()}`,
+    Accept: "application/vnd.github+json",
+  };
+}
+
+function decodeJwtExpiry(token) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload.exp) return null;
+    return new Date(payload.exp * 1000);
+  } catch (e) {
+    return null;
+  }
+}
+
+function formatDateTime(d) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  }).format(d);
+}
+
+function relativeAge(d) {
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${Math.round(hours / 24)} j`;
+}
+
+function setStateLine(id, text, kind) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = "v" + (kind ? " " + kind : "");
+}
+
+function renderTokenExpiry() {
+  const stored = localStorage.getItem("midrag_token_exp");
+  if (!stored) {
+    setStateLine("state-token", "expiration inconnue", "warn");
+    return;
+  }
+  const exp = new Date(stored);
+  const days = Math.floor((exp.getTime() - Date.now()) / 86400000);
+  if (days < 0) {
+    setStateLine("state-token", `expiré le ${formatDateTime(exp)}`, "err");
+  } else if (days <= 3) {
+    setStateLine("state-token", `expire le ${formatDateTime(exp)} (dans ${days} j)`, "warn");
+  } else {
+    setStateLine("state-token", `valide jusqu'au ${formatDateTime(exp)}`, "ok");
+  }
+}
+
+async function refreshState() {
+  $("state-card").style.display = "block";
+  renderTokenExpiry();
+
+  try {
+    const res = await fetch(
+      `${apiBase()}/actions/workflows/midrag-availability.yml/runs?per_page=1&_=${Date.now()}`,
+      { cache: "no-store", headers: ghHeaders() }
+    );
+    if (!res.ok) throw new Error(`${res.status}`);
+    const run = (await res.json()).workflow_runs[0];
+    if (!run) {
+      setStateLine("state-run", "aucune exécution", "warn");
+    } else {
+      const at = new Date(run.run_started_at);
+      const done = run.status === "completed";
+      const ok = run.conclusion === "success";
+      setStateLine(
+        "state-run",
+        `${done ? (ok ? "réussie" : "en échec") : "en cours"} · ${formatDateTime(at)} (${relativeAge(at)})`,
+        done ? (ok ? "ok" : "err") : "warn"
+      );
+    }
+  } catch (e) {
+    setStateLine("state-run", "illisible — le jeton a besoin de « Actions: Read »", "warn");
+  }
+
+  const banner = $("state-banner");
+  try {
+    const res = await fetch(`${apiBase()}/issues?state=open&per_page=100&_=${Date.now()}`,
+                            { cache: "no-store", headers: ghHeaders() });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const alert = (await res.json()).find(i => i.title === ISSUE_TITLE && !i.pull_request);
+    if (alert) {
+      banner.style.display = "block";
+      banner.innerHTML = "⚠️ <strong>Le bot ne maintient plus ta disponibilité.</strong> " +
+        `Renouvelle le token ci-dessous. <a href="${alert.html_url}" target="_blank" rel="noopener">Voir le détail</a>`;
+    } else {
+      banner.style.display = "none";
+    }
+  } catch (e) {
+    banner.style.display = "none";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Renouvellement du token Midrag : chiffrement libsodium "sealed box" dans le
+// navigateur, puis écriture directe du secret GitHub — pour éviter de passer
+// par les réglages GitHub depuis un téléphone à chaque expiration.
+// ---------------------------------------------------------------------------
+const SODIUM_SCRIPTS = [
+  "https://cdn.jsdelivr.net/npm/libsodium@0.7.15/dist/modules/libsodium.js",
+  "https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/dist/modules/libsodium-wrappers.js",
+];
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("Chargement de la librairie de chiffrement impossible — vérifie ta connexion."));
+    document.head.appendChild(el);
+  });
+}
+
+async function ensureSodium() {
+  if (typeof sodium === "undefined") {
+    for (const src of SODIUM_SCRIPTS) await loadScript(src);
+  }
+  await sodium.ready;
+  return sodium;
+}
+
+function setTokenStatus(kind, msg) {
+  const el = $("token-status");
+  el.className = "status show " + kind;
+  el.textContent = msg;
+}
+
+async function saveMidragToken() {
+  const token = $("midrag-token").value.trim();
+  if (!token) {
+    setTokenStatus("err", "Colle d'abord le token Midrag.");
+    return;
+  }
+  const exp = decodeJwtExpiry(token);
+  if (!exp) {
+    setTokenStatus("err", "Ce texte n'est pas un token Midrag valide (impossible d'y lire une date d'expiration).");
+    return;
+  }
+  if (exp.getTime() <= Date.now()) {
+    setTokenStatus("err", `Ce token est déjà expiré (${formatDateTime(exp)}). Reconnecte-toi à Midrag pour en obtenir un neuf.`);
+    return;
+  }
+
+  $("save-token-btn").disabled = true;
+  setTokenStatus("pending", "Chiffrement et envoi…");
+  try {
+    const s = await ensureSodium();
+    const keyRes = await fetch(`${apiBase()}/actions/secrets/public-key`, { headers: ghHeaders() });
+    if (keyRes.status === 403 || keyRes.status === 404) {
+      throw new Error("Le jeton GitHub n'a pas la permission « Secrets: Read and write » — ajoute-la au jeton, puis réessaie.");
+    }
+    if (!keyRes.ok) throw new Error(`Clé publique du repo illisible (${keyRes.status})`);
+    const { key, key_id } = await keyRes.json();
+
+    const sealed = s.crypto_box_seal(
+      s.from_string(token),
+      s.from_base64(key, s.base64_variants.ORIGINAL)
+    );
+    const putRes = await fetch(`${apiBase()}/actions/secrets/MIDRAG_TOKEN`, {
+      method: "PUT",
+      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        encrypted_value: s.to_base64(sealed, s.base64_variants.ORIGINAL),
+        key_id,
+      }),
+    });
+    if (!putRes.ok) throw new Error(`Écriture du secret refusée (${putRes.status})`);
+
+    // Seule la date d'expiration est conservée ici, jamais le token lui-même.
+    localStorage.setItem("midrag_token_exp", exp.toISOString());
+    $("midrag-token").value = "";
+    $("midrag-token-preview").textContent = "";
+    renderTokenExpiry();
+
+    setTokenStatus("pending", "Token enregistré ✔ — exécution de test en cours…");
+    const runRes = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
+      method: "POST",
+      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+      body: JSON.stringify({ ref: $("branch").value.trim() }),
+    });
+    if (!runRes.ok) {
+      setTokenStatus("ok", `Token enregistré ✔ (valide jusqu'au ${formatDateTime(exp)}). Le test automatique n'a pas pu être lancé — le bot reprendra de lui-même au prochain quart d'heure.`);
+      return;
+    }
+    setTimeout(refreshState, 25000);
+    setTokenStatus("ok", `Token enregistré ✔ (valide jusqu'au ${formatDateTime(exp)}). Test lancé — l'état se met à jour dans ~30 s.`);
+  } catch (e) {
+    setTokenStatus("err", e.message);
+  } finally {
+    $("save-token-btn").disabled = false;
+  }
+}
+
 appendDates(INITIAL_DAYS);
 
 const savedPat = localStorage.getItem("midrag_pat");
@@ -552,6 +813,24 @@ $("connect-btn").addEventListener("click", loadAll);
 $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
+$("refresh-state-btn").addEventListener("click", refreshState);
+$("save-token-btn").addEventListener("click", saveMidragToken);
+
+$("midrag-token-toggle").addEventListener("click", () => {
+  const f = $("midrag-token");
+  f.type = f.type === "password" ? "text" : "password";
+});
+
+// Retour immédiat sur la validité du token collé, avant même de l'envoyer.
+$("midrag-token").addEventListener("input", () => {
+  const v = $("midrag-token").value.trim();
+  const preview = $("midrag-token-preview");
+  if (!v) { preview.textContent = ""; return; }
+  const exp = decodeJwtExpiry(v);
+  if (!exp) preview.textContent = "⚠️ Ce texte ne ressemble pas à un token Midrag.";
+  else if (exp.getTime() <= Date.now()) preview.textContent = `⚠️ Token déjà expiré (${formatDateTime(exp)}).`;
+  else preview.textContent = `✔ Token valide jusqu'au ${formatDateTime(exp)}.`;
+});
 
 $("pat-toggle").addEventListener("click", () => {
   const pat = $("pat");
