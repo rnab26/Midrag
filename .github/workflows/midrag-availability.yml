@@ -2,10 +2,18 @@ name: Midrag - maintien de disponibilité
 
 on:
   schedule:
-    # Toutes les 15 minutes -> large marge avant l'expiration d'1h de
-    # "disponible maintenant", même si GitHub retarde parfois un run.
+    # Filet de sécurité : le déclencheur principal est un cron externe qui
+    # appelle workflow_dispatch tous les quarts d'heure (les schedules GitHub
+    # sont souvent retardés). Large marge avant l'expiration d'1h de
+    # "disponible maintenant".
     - cron: "*/30 * * * *"
   workflow_dispatch: {}
+
+# Le job ouvre/referme une issue de suivi quand le bot ne peut plus travailler
+# (token Midrag expiré, API en panne) au lieu d'échouer à chaque exécution.
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   ping-availability:
@@ -23,4 +31,5 @@ jobs:
       - name: Repointer la disponibilité si besoin
         env:
           MIDRAG_TOKEN: ${{ secrets.MIDRAG_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python midrag_bot/bot.py
