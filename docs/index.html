@@ -202,7 +202,7 @@
 
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
-  <label for="pat">Jeton d'accès GitHub (fine-grained, scope Contents R/W sur ce repo)</label>
+  <label for="pat">Jeton d'accès GitHub (fine-grained, commence par <code>github_pat_</code>)</label>
   <div class="pat-row">
     <input type="password" id="pat" placeholder="github_pat_..." autocomplete="off">
     <button type="button" class="pat-btn" id="pat-toggle" title="Afficher/masquer">👁</button>
@@ -214,12 +214,14 @@
   <input type="text" id="repo" value="Midrag">
   <label for="branch">Branche</label>
   <input type="text" id="branch" value="claude/midrag-availability-automation-fn3mav">
+  <div class="hint" id="pat-warning" style="display:none;color:var(--err);"></div>
   <button class="btn-primary" id="connect-btn">Se connecter et charger</button>
-  <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com.</div>
+  <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com. Ce n'est pas le token Midrag : celui-là se colle plus bas, dans « Renouveler le token Midrag ».</div>
   <details>
     <summary>Comment créer ce jeton ?</summary>
     <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
-    <p>Repository access : seulement "Midrag". Permissions : <strong>Contents: Read and write</strong>, <strong>Workflows: Read and write</strong> (et <strong>Actions: Read and write</strong> si tu veux le bouton "Lancer maintenant" ci-dessous). Copie le jeton généré et colle-le ici.</p>
+    <p>Repository access : seulement "Midrag". Permissions, toutes en <strong>Read and write</strong> : <strong>Contents</strong> (planning), <strong>Secrets</strong> (renouvellement du token Midrag), <strong>Actions</strong> (exécutions), <strong>Issues</strong> (état du bot) et <strong>Workflows</strong> (fréquence). Copie le jeton généré et colle-le ici.</p>
+    <p>Sur un jeton déjà créé, les permissions se modifient sans changer sa valeur : <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">liste des fine-grained tokens</a> → ton jeton → section <em>Repository permissions</em> → <em>Update token</em>.</p>
   </details>
 </div>
 
@@ -549,7 +551,34 @@ function buildConfigYaml() {
   return lines.join("\n") + "\n";
 }
 
+// Les deux jetons du projet se confondent facilement: le jeton GitHub
+// commence par github_pat_ (ou ghp_ pour un jeton classique), le token
+// Midrag est un JWT (eyJ...). Coller l'un à la place de l'autre donnait un
+// « 401 » incompréhensible — autant nommer l'erreur.
+const looksLikeJwt = (v) => /^eyJ[\w-]*\./.test(v);
+const looksLikeGithubToken = (v) => /^(github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)/.test(v);
+
+const PAT_IS_MIDRAG = "Le champ « Jeton d'accès GitHub » contient un token Midrag (eyJ…). Remets-y ton jeton GitHub (github_pat_…) — le token Midrag se colle plus bas, dans « Renouveler le token Midrag ».";
+
+function patProblem() {
+  const value = $("pat").value.trim();
+  if (!value) return "Colle ton jeton GitHub dans la carte « Connexion ».";
+  if (looksLikeJwt(value)) return PAT_IS_MIDRAG;
+  if (!looksLikeGithubToken(value)) return "Le champ « Jeton d'accès GitHub » ne ressemble pas à un jeton GitHub : il devrait commencer par github_pat_.";
+  return null;
+}
+
+function renderPatWarning() {
+  const el = $("pat-warning");
+  const value = $("pat").value.trim();
+  const problem = value ? patProblem() : null;
+  el.textContent = problem || "";
+  el.style.display = problem ? "block" : "none";
+}
+
 async function loadAll() {
+  const problem = patProblem();
+  if (problem) { setStatus("err", problem); return; }
   setStatus("pending", "Chargement…");
   try {
     const [cfg, wf] = await Promise.all([ghGet(CONFIG_PATH), ghGet(WORKFLOW_PATH)]);
@@ -760,6 +789,12 @@ async function saveMidragToken() {
     setTokenStatus("err", "Colle d'abord le token Midrag.");
     return;
   }
+  if (looksLikeGithubToken(token)) {
+    setTokenStatus("err", "Ça, c'est ton jeton GitHub — il va dans la carte « Connexion », tout en haut. Ici on attend le token Midrag (il commence par eyJ).");
+    return;
+  }
+  const patIssue = patProblem();
+  if (patIssue) { setTokenStatus("err", patIssue); return; }
   const exp = decodeJwtExpiry(token);
   if (!exp) {
     setTokenStatus("err", "Ce texte n'est pas un token Midrag valide (impossible d'y lire une date d'expiration).");
@@ -775,8 +810,11 @@ async function saveMidragToken() {
   try {
     const s = await ensureSodium();
     const keyRes = await fetch(`${apiBase()}/actions/secrets/public-key`, { headers: ghHeaders() });
+    if (keyRes.status === 401) {
+      throw new Error("GitHub a refusé le jeton (401) : il est invalide, révoqué ou expiré. Vérifie le champ « Jeton d'accès GitHub » de la carte « Connexion » (👁 pour l'afficher) — il doit commencer par github_pat_.");
+    }
     if (keyRes.status === 403 || keyRes.status === 404) {
-      throw new Error("Le jeton GitHub n'a pas la permission « Secrets: Read and write » — ajoute-la au jeton, puis réessaie.");
+      throw new Error("Le jeton GitHub n'a pas la permission « Secrets: Read and write » — ajoute-la au jeton (Settings → Developer settings → Fine-grained tokens → ton jeton → Repository permissions → Secrets → Read and write → Update token), puis réessaie.");
     }
     if (!keyRes.ok) throw new Error(`Clé publique du repo illisible (${keyRes.status})`);
     const { key, key_id } = await keyRes.json();
@@ -793,7 +831,11 @@ async function saveMidragToken() {
         key_id,
       }),
     });
-    if (!putRes.ok) throw new Error(`Écriture du secret refusée (${putRes.status})`);
+    if (!putRes.ok) {
+      throw new Error(putRes.status === 403 || putRes.status === 404
+        ? "Écriture du secret refusée : le jeton GitHub peut lire les secrets mais pas les écrire — mets la permission « Secrets » sur Read and write."
+        : `Écriture du secret refusée (${putRes.status})`);
+    }
 
     // Seule la date d'expiration est conservée ici, jamais le token lui-même.
     localStorage.setItem("midrag_token_exp", exp.toISOString());
@@ -831,6 +873,9 @@ if (savedPat) {
   loadAll();
 }
 
+renderPatWarning();
+$("pat").addEventListener("input", renderPatWarning);
+
 $("connect-btn").addEventListener("click", loadAll);
 $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
@@ -848,6 +893,10 @@ $("midrag-token").addEventListener("input", () => {
   const v = $("midrag-token").value.trim();
   const preview = $("midrag-token-preview");
   if (!v) { preview.textContent = ""; return; }
+  if (looksLikeGithubToken(v)) {
+    preview.textContent = "⚠️ Ça, c'est ton jeton GitHub — il va dans la carte « Connexion », tout en haut.";
+    return;
+  }
   const exp = decodeJwtExpiry(v);
   if (!exp) preview.textContent = "⚠️ Ce texte ne ressemble pas à un token Midrag.";
   else if (exp.getTime() <= Date.now()) preview.textContent = `⚠️ Token déjà expiré (${formatDateTime(exp)}).`;
