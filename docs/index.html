@@ -202,7 +202,7 @@
 
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
-  <label for="pat">Jeton d'accès GitHub (fine-grained, commence par <code>github_pat_</code>)</label>
+  <label for="pat">Jeton d'accès GitHub (<code>github_pat_…</code> ou <code>ghp_…</code>)</label>
   <div class="pat-row">
     <input type="password" id="pat" placeholder="github_pat_..." autocomplete="off">
     <button type="button" class="pat-btn" id="pat-toggle" title="Afficher/masquer">👁</button>
@@ -224,6 +224,8 @@
     <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
     <p>Repository access : seulement "Midrag". Permissions, toutes en <strong>Read and write</strong> : <strong>Contents</strong> (planning), <strong>Secrets</strong> (renouvellement du token Midrag), <strong>Actions</strong> (exécutions), <strong>Issues</strong> (état du bot) et <strong>Workflows</strong> (fréquence). Copie le jeton généré et colle-le ici.</p>
     <p>Sur un jeton déjà créé, les permissions se modifient sans changer sa valeur : <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">liste des fine-grained tokens</a> → ton jeton → section <em>Repository permissions</em> → <em>Update token</em>.</p>
+    <p><strong>Plus simple si la liste des permissions te résiste</strong> : un <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">jeton classique</a> avec les deux cases <code>repo</code> et <code>workflow</code> couvre tout d'un coup (il commence par <code>ghp_</code>). Contrepartie : il donne accès à tous tes repos, pas seulement Midrag.</p>
+    <p>En cas de doute, le bouton « Diagnostiquer le jeton » teste chaque permission une par une et dit laquelle manque.</p>
   </details>
 </div>
 
