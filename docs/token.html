@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Midrag — récupérer un token</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --border: #dcdce0;
+    --accent: #a3134f;
+    --accent-dark: #7d0e3d;
+    --ok: #1e7e34;
+    --err: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    padding-bottom: 64px;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 1rem; margin: 0 0 12px; }
+  button {
+    appearance: none;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+  .btn-primary:active { background: var(--accent-dark); }
+  .btn-secondary { background: #ececef; color: var(--text); width: 100%; }
+  ol { padding-left: 20px; margin: 0; }
+  ol li { margin-bottom: 10px; line-height: 1.45; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+  .status {
+    font-size: 0.9rem;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.ok { background: #e6f4ea; color: var(--ok); }
+  .status.err { background: #fbe9e7; color: var(--err); }
+  code {
+    background: #f0f0f3;
+    padding: 1px 5px;
+    border-radius: 5px;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+  textarea {
+    width: 100%;
+    height: 90px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 0.7rem;
+    background: #fff;
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  details { font-size: 0.85rem; color: var(--muted); margin-top: 12px; }
+  summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+  .drag-link {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🔑 Récupérer un token Midrag</h1>
+<div class="sub">Sans ouvrir les outils développeur, et depuis ton téléphone.</div>
+
+<div class="card">
+  <h2>Pourquoi ce détour</h2>
+  <p style="margin:0;line-height:1.5;">Midrag n'accepte les appels à son API que depuis son propre site : la page de
+  planning ne peut donc pas se connecter à ta place. Ce favori, lui, s'exécute <strong>dans</strong> la page Midrag —
+  il y rejoue la connexion officielle (identifiants, puis code reçu par SMS ou WhatsApp) et t'affiche le token,
+  prêt à coller dans la page de planning.</p>
+  <div class="hint">Rien n'est envoyé ailleurs : les appels partent de ton navigateur vers Midrag, comme quand tu te
+  connectes à la main. Tes identifiants restent dans le navigateur, le token n'est jamais enregistré.</div>
+</div>
+
+<div class="card">
+  <h2>1. Copier le favori</h2>
+  <button class="btn-primary" id="copy-btn">Copier le code du favori</button>
+  <div class="status" id="copy-status"></div>
+  <div class="hint">Sur ordinateur, tu peux aussi faire glisser ce bouton dans ta barre de favoris :</div>
+  <a class="drag-link" id="drag-link" href="#">Token Midrag</a>
+  <details>
+    <summary>Voir le code copié</summary>
+    <textarea id="code-area" readonly></textarea>
+    <p>Ce favori charge <a href="token-bookmarklet.js" target="_blank" rel="noopener">token-bookmarklet.js</a>
+    depuis cette page : si j'améliore l'outil, tu n'as rien à réinstaller.</p>
+  </details>
+  <details>
+    <summary>Si ça ne marche pas : version autonome</summary>
+    <p>Si Midrag se met un jour à bloquer les scripts externes, utilise cette version qui contient tout le code
+    (beaucoup plus longue, mais sans chargement externe) :</p>
+    <textarea id="full-area" readonly></textarea>
+    <button class="btn-secondary" id="copy-full-btn">Copier la version autonome</button>
+  </details>
+</div>
+
+<div class="card">
+  <h2>2. L'installer comme favori</h2>
+  <p style="margin:0 0 10px;color:var(--muted);font-size:0.9rem;">Une seule fois. Un favori ne peut pas être créé
+  directement avec ce type d'adresse : on en crée un normal, puis on remplace son adresse.</p>
+
+  <p style="font-weight:600;margin:12px 0 6px;">Sur iPhone (Safari)</p>
+  <ol>
+    <li>Sur n'importe quelle page : bouton <strong>Partager</strong> → <strong>Ajouter un signet</strong> → nomme-le
+    <code>Token Midrag</code> → Enregistrer.</li>
+    <li>Icône <strong>Signets</strong> (le livre) → <strong>Modifier</strong> → touche <code>Token Midrag</code>.</li>
+    <li>Efface l'adresse, <strong>colle le code</strong> copié à l'étape 1, puis OK.</li>
+  </ol>
+
+  <p style="font-weight:600;margin:12px 0 6px;">Sur Android (Chrome)</p>
+  <ol>
+    <li>Sur n'importe quelle page : menu <strong>⋮</strong> → l'<strong>étoile</strong> pour créer un favori.</li>
+    <li>Menu <strong>⋮</strong> → <strong>Favoris</strong> → appui long sur le favori → <strong>Modifier</strong>.</li>
+    <li>Nom : <code>Token Midrag</code>. Adresse : <strong>colle le code</strong> copié à l'étape 1. Enregistre.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h2>3. S'en servir</h2>
+  <ol>
+    <li>Ouvre <a href="https://bizn.midrag.co.il" target="_blank" rel="noopener">bizn.midrag.co.il</a>
+    (pas besoin d'être déjà connecté).</li>
+    <li><strong>iPhone :</strong> Signets → touche <code>Token Midrag</code>.<br>
+    <strong>Android :</strong> tape <code>Token Midrag</code> dans la barre d'adresse et choisis la suggestion.</li>
+    <li>Remplis tes identifiants (retenus ensuite), reçois le code, valide : le token s'affiche avec un bouton
+    <strong>Copier</strong>.</li>
+    <li>Reviens sur la <a href="./">page de planning</a>, carte <strong>Token Midrag</strong>, colle et enregistre.</li>
+  </ol>
+  <div class="hint">La page de planning vérifie derrière en lançant une exécution de test : tu sais tout de suite si
+  le token est bon.</div>
+</div>
+
+<script>
+const BOOKMARKLET_SRC = "token-bookmarklet.js";
+const $ = (id) => document.getElementById(id);
+
+// Favori court: il charge le vrai script depuis cette page. Le CSP de Midrag
+// ne restreint que les iframes (frame-src), donc un script externe passe.
+const loaderSource = `(function(){
+  var s=document.createElement('script');
+  s.src=${JSON.stringify(new URL(BOOKMARKLET_SRC, location.href).href)}+'?'+Date.now();
+  s.onerror=function(){alert("Le chargement du script a échoué. Utilise la version autonome du favori (page d'installation).");};
+  document.body.appendChild(s);
+})()`.replace(/\s*\n\s*/g, "");
+
+const loaderUrl = "javascript:" + encodeURIComponent(loaderSource);
+$("code-area").value = loaderUrl;
+$("drag-link").href = loaderUrl;
+
+function setStatus(kind, msg) {
+  const el = $("copy-status");
+  el.className = "status show " + kind;
+  el.textContent = msg;
+}
+
+async function copy(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("ok", label + " copié ✔ — passe à l'étape 2.");
+  } catch (e) {
+    setStatus("err", "Copie impossible sur ce navigateur : ouvre « Voir le code copié » et copie le texte à la main.");
+  }
+}
+
+$("copy-btn").addEventListener("click", () => copy(loaderUrl, "Favori"));
+
+// Version autonome: le fichier source entier, encodé dans l'URL.
+let fullUrl = null;
+fetch(BOOKMARKLET_SRC + "?" + Date.now())
+  .then((r) => r.text())
+  .then((src) => {
+    fullUrl = "javascript:" + encodeURIComponent(src);
+    $("full-area").value = fullUrl;
+  })
+  .catch(() => {
+    $("full-area").value = "Impossible de charger " + BOOKMARKLET_SRC + " — recharge la page.";
+  });
+
+$("copy-full-btn").addEventListener("click", () => {
+  if (!fullUrl) { setStatus("err", "Version autonome pas encore chargée — attends une seconde et réessaie."); return; }
+  copy(fullUrl, "Favori autonome");
+});
+</script>
+
+</body>
+</html>

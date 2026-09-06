@@ -241,9 +241,11 @@
   </div>
   <div class="hint" id="midrag-token-preview"></div>
   <button class="btn-primary" id="save-token-btn">Enregistrer le token et tester</button>
+  <div class="hint" style="margin-top:10px;">Pas de token sous la main ? <a href="token.html">Récupérer un token depuis ton téléphone</a> — sans outils développeur.</div>
   <details>
     <summary>Où trouver ce token ?</summary>
-    <p>Connecte-toi sur <strong>bizn.midrag.co.il</strong> (téléphone + n° d'entreprise + code SMS) avec les outils développeur ouverts (F12) → onglet <em>Network</em>, filtre <em>Fetch/XHR</em> → requête <code>Token</code> → onglet <em>Response</em> → copie la valeur de <code>data.token</code> (elle commence par <code>eyJ</code>). Procédure détaillée dans le README.</p>
+    <p>Le plus simple, surtout au téléphone : <a href="token.html">la page de récupération</a>. Elle installe un favori qui rejoue la connexion Midrag (identifiants + code reçu par SMS) directement dans le site, et t'affiche le token.</p>
+    <p>À la main : connecte-toi sur <strong>bizn.midrag.co.il</strong> (téléphone + n° d'entreprise + code SMS) avec les outils développeur ouverts (F12) → onglet <em>Network</em>, filtre <em>Fetch/XHR</em> → requête <code>Token</code> → onglet <em>Response</em> → copie la valeur de <code>data.token</code> (elle commence par <code>eyJ</code>). Procédure détaillée dans le README.</p>
     <p>Le jeton GitHub ci-dessus doit avoir la permission <strong>Secrets: Read and write</strong> pour que ce bouton fonctionne, et <strong>Issues: Read and write</strong> + <strong>Actions: Read and write</strong> pour l'état ci-dessus.</p>
   </details>
   <div class="status" id="token-status"></div>

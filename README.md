@@ -32,6 +32,22 @@ environ **une fois par mois**, au lieu de pointer toutes les heures.
 
 ### 1. Récupérer ton token Midrag (à refaire ~1x/mois)
 
+**Au téléphone :** la page `docs/token.html` (lien "Récupérer un token"
+depuis la page de planning) installe un favori `javascript:` à poser une
+fois. Sur le site Midrag, ce favori rejoue la connexion officielle —
+`Account/Login` → `Account/SendCode` → `Account/Token`, les trois appels
+du formulaire du site — te demande le code reçu par SMS ou WhatsApp, et
+affiche le token avec un bouton "Copier". Plus d'outils développeur.
+
+Ce détour par un favori est nécessaire parce que Midrag restreint les
+appels navigateur à son propre domaine (CORS) : la page de planning ne
+peut pas se connecter à ta place, alors que le favori, lui, s'exécute
+dans la page Midrag. Le code lisible est dans `docs/token-bookmarklet.js`
+(le favori le charge depuis GitHub Pages, donc une amélioration ne
+demande pas de réinstaller quoi que ce soit).
+
+**À la main (sur ordinateur) :**
+
 1. Va sur `bizn.midrag.co.il` et connecte-toi normalement (téléphone + n°
    d'entreprise + code SMS).
 2. Une fois sur la page de disponibilité, ouvre les outils développeur du
