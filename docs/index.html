@@ -216,6 +216,8 @@
   <input type="text" id="branch" value="claude/midrag-availability-automation-fn3mav">
   <div class="hint" id="pat-warning" style="display:none;color:var(--err);"></div>
   <button class="btn-primary" id="connect-btn">Se connecter et charger</button>
+  <button class="btn-secondary" id="diag-btn" style="margin-top:8px;">Diagnostiquer le jeton</button>
+  <div id="pat-diag" style="display:none;margin-top:10px;font-size:0.85rem;line-height:1.5;"></div>
   <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com. Ce n'est pas le token Midrag : celui-là se colle plus bas, dans « Renouveler le token Midrag ».</div>
   <details>
     <summary>Comment créer ce jeton ?</summary>
@@ -576,6 +578,63 @@ function renderPatWarning() {
   el.style.display = problem ? "block" : "none";
 }
 
+// Diagnostic: chaque permission du jeton est testée sur l'endpoint qui la
+// demande, pour dire laquelle manque au lieu d'un « 403 » global.
+const DIAG_CHECKS = [
+  { key: "identity", label: "Jeton reconnu par GitHub", url: () => "https://api.github.com/user",
+    fix: "Le jeton est invalide, révoqué ou expiré : recrée-le." },
+  { key: "repo", label: "Accès au repo", url: () => apiBase(),
+    fix: "Ce jeton ne voit pas ce repo : dans « Repository access », choisis « Only select repositories » puis Midrag." },
+  { key: "contents", label: "Contents (planning)", url: () => `${apiBase()}/contents/${CONFIG_PATH}`,
+    fix: "Permission « Contents » manquante." },
+  { key: "secrets", label: "Secrets (token Midrag)", url: () => `${apiBase()}/actions/secrets/public-key`,
+    fix: "Permission « Secrets » manquante — c'est elle qui bloque l'enregistrement du token." },
+  { key: "actions", label: "Actions (exécutions)", url: () => `${apiBase()}/actions/workflows`,
+    fix: "Permission « Actions » manquante." },
+  { key: "issues", label: "Issues (état du bot)", url: () => `${apiBase()}/issues?per_page=1`,
+    fix: "Permission « Issues » manquante." },
+];
+
+async function diagnosePat() {
+  const out = $("pat-diag");
+  out.style.display = "block";
+  const problem = patProblem();
+  if (problem) { out.innerHTML = `<span style="color:var(--err);">${problem}</span>`; return; }
+
+  $("diag-btn").disabled = true;
+  out.textContent = "Test des permissions…";
+  const results = {};
+  const lines = [];
+  for (const check of DIAG_CHECKS) {
+    let res = null;
+    try {
+      res = await fetch(check.url() + (check.url().includes("?") ? "&" : "?") + "_=" + Date.now(),
+        { cache: "no-store", headers: ghHeaders() });
+    } catch (e) {
+      lines.push(`⚠️ ${check.label} — réseau injoignable`);
+      continue;
+    }
+    results[check.key] = res.ok;
+    if (res.ok) {
+      lines.push(`✔ ${check.label}`);
+      continue;
+    }
+    let message = "";
+    try { message = (await res.json()).message || ""; } catch (e) { /* pas de corps JSON */ }
+    lines.push(`✘ <strong>${check.label}</strong> — ${res.status}${message ? " : " + message : ""}<br><span style="color:var(--muted);">${check.fix}</span>`);
+  }
+
+  // Un jeton créé en « Public Repositories (read-only) » lit le repo mais
+  // n'obtient jamais d'écriture: le symptôme est lisible d'ici.
+  if (results.repo && results.contents && !results.secrets && !results.actions && !results.issues) {
+    lines.push('<br><strong>Diagnostic :</strong> ton jeton est très probablement en mode « Public Repositories (read-only) », qui est en lecture seule et ne peut recevoir aucune permission d\'écriture. Ouvre-le sur <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">GitHub</a>, section « Repository access » → « Only select repositories » → Midrag, puis règle les permissions.');
+  } else if (results.secrets) {
+    lines.push('<br><strong>Diagnostic :</strong> la lecture des secrets passe. Si l\'enregistrement du token échoue encore, c\'est que « Secrets » est en <em>Read-only</em> : mets-la sur <em>Read and write</em>.');
+  }
+  out.innerHTML = lines.join("<br>");
+  $("diag-btn").disabled = false;
+}
+
 async function loadAll() {
   const problem = patProblem();
   if (problem) { setStatus("err", problem); return; }
@@ -877,6 +936,7 @@ renderPatWarning();
 $("pat").addEventListener("input", renderPatWarning);
 
 $("connect-btn").addEventListener("click", loadAll);
+$("diag-btn").addEventListener("click", diagnosePat);
 $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
