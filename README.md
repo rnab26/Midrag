@@ -44,12 +44,18 @@ environ **une fois par mois**, au lieu de pointer toutes les heures.
 
 ### 2. Secret GitHub
 
-- Sur GitHub (web ou appli mobile) : `Settings` → `Secrets and variables`
-  → `Actions` → `New repository secret`.
-- Nom : `MIDRAG_TOKEN`. Valeur : le token copié à l'étape précédente.
-- Quand tu rafraîchis le token (~1x/mois, ou si le bot t'envoie un mail
-  d'échec GitHub Actions signalant une expiration), remplace juste la
-  valeur de ce même secret.
+Le token vit dans le secret `MIDRAG_TOKEN` du repo. Deux façons de le
+renseigner :
+
+- **Depuis la page de configuration (recommandé, marche au téléphone)** :
+  carte "Renouveler le token Midrag" → colle le token → "Enregistrer le
+  token et tester". La page vérifie sa date d'expiration, le chiffre dans
+  ton navigateur (sealed box libsodium, comme le fait GitHub CLI), écrit
+  le secret via l'API et déclenche une exécution de test. Le token n'est
+  jamais écrit dans le repo ni conservé par la page. Le jeton GitHub
+  utilisé par la page doit avoir la permission `Secrets: Read and write`.
+- **À la main** : `Settings` → `Secrets and variables` → `Actions` →
+  secret `MIDRAG_TOKEN`.
 
 ### 3. Planning — page de configuration
 
@@ -65,8 +71,11 @@ réactualisation, sans toucher au YAML à la main :
 2. Crée un jeton d'accès GitHub scopé à ce seul repo : `Settings` (de ton
    compte) → `Developer settings` → `Personal access tokens` →
    `Fine-grained tokens` → `Generate new token`. Repository access :
-   uniquement `Midrag`. Permissions : `Contents: Read and write` (+
-   `Actions: Read and write` si tu veux le bouton "Lancer maintenant").
+   uniquement `Midrag`. Permissions : `Contents: Read and write`,
+   `Actions: Read and write` (bouton "Lancer maintenant" et affichage de
+   la dernière exécution), `Secrets: Read and write` (renouvellement du
+   token Midrag depuis la page) et `Issues: Read-only` (affichage de
+   l'alerte quand le bot est bloqué).
 3. Ouvre la page GitHub Pages sur ton téléphone, colle ce jeton (il reste
    stocké uniquement dans ton navigateur), et règle ton planning +
    cadence directement depuis le calendrier. "Enregistrer" pousse les
@@ -79,9 +88,21 @@ la page si tu veux garder tes changements.
 ### 4. C'est tout
 
 Le workflow tourne ensuite tout seul toutes les 15 minutes. Onglet
-`Actions` du repo pour voir l'historique des exécutions. Si une exécution
-échoue (token expiré, etc.), GitHub t'envoie normalement un email
-d'alerte automatique.
+`Actions` du repo pour voir l'historique des exécutions.
+
+### Quand le bot est bloqué
+
+Le job Actions **ne passe pas au rouge** quand le bot ne peut rien faire
+(token expiré ou rejeté, API Midrag en panne) : à raison d'une exécution
+tous les quarts d'heure, GitHub envoyait une centaine de mails par jour
+pour un seul et même problème. À la place, le bot ouvre **une** issue
+`⚠️ Bot Midrag : la disponibilité n'est plus maintenue`, qui décrit le
+problème et se referme toute seule dès qu'une exécution repasse au vert.
+
+Donc : un mail d'issue = le bot est arrêté, il faut renouveler le token.
+La carte "État du bot" de la page de configuration montre la même
+information (dernière exécution, alerte en cours, date d'expiration du
+token).
 
 ## ⚠️ Point d'attention
 
