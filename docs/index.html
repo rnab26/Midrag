@@ -288,6 +288,16 @@
   </select>
   <div class="hint">À partir de ce délai, le bot ouvre une issue d'avertissement — une seule, refermée toute seule dès que le token est renouvelé. Sans ça, tu n'es prévenu qu'une fois la disponibilité déjà tombée.</div>
 
+  <label for="planning-alert-days">Prévenir avant la fin du planning</label>
+  <select id="planning-alert-days">
+    <option value="1">1 jour avant</option>
+    <option value="2" selected>2 jours avant</option>
+    <option value="3">3 jours avant</option>
+    <option value="5">5 jours avant</option>
+    <option value="7">7 jours avant</option>
+  </select>
+  <div class="hint">Le planning est daté jour par jour : quand la dernière date est passée, le bot tourne sans rien repointer. Une issue s'ouvre à l'approche de cette date, et se referme dès que tu remets des créneaux. Un jour réglé sur « Pas disponible » compte comme configuré.</div>
+
   <button class="btn-primary" id="save-btn">Enregistrer le planning</button>
   <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
 
@@ -306,6 +316,7 @@ const MODES = [
 ];
 const CONFIG_PATH = "midrag_bot/config.yaml";
 const DEFAULT_ALERT_DAYS = "3";
+const DEFAULT_PLANNING_ALERT_DAYS = "2";
 const WORKFLOW_PATH = ".github/workflows/midrag-availability.yml";
 const INITIAL_DAYS = 14;
 const EXTEND_DAYS = 7;
@@ -480,6 +491,11 @@ function parseConfig(yamlText) {
     ? alertMatch[1]
     : DEFAULT_ALERT_DAYS;
 
+  const planningMatch = yamlText.match(/planning_alert_days:\s*(\d+)/);
+  $("planning-alert-days").value = planningMatch && $("planning-alert-days").querySelector(`option[value="${planningMatch[1]}"]`)
+    ? planningMatch[1]
+    : DEFAULT_PLANNING_ALERT_DAYS;
+
   const windowRe = /-\s*date:\s*"([^"]*)"\s*\n\s*start:\s*"([^"]*)"\s*\n\s*end:\s*"([^"]*)"\s*\n\s*mode:\s*"([^"]*)"/g;
   const byDate = {};
   let m;
@@ -532,6 +548,10 @@ function buildConfigYaml() {
     "# Combien de jours avant l'expiration du token Midrag une issue",
     "# d'avertissement est ouverte (réglable depuis la page de configuration).",
     `token_alert_days: ${$("alert-days").value || DEFAULT_ALERT_DAYS}`,
+    "",
+    "# Combien de jours avant la fin du planning une issue d'avertissement est",
+    "# ouverte (réglable depuis la page de configuration).",
+    `planning_alert_days: ${$("planning-alert-days").value || DEFAULT_PLANNING_ALERT_DAYS}`,
     "",
     "schedule:",
   ];

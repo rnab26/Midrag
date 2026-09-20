@@ -9,6 +9,10 @@ sector_id: 21
 # d'avertissement est ouverte (réglable depuis la page de configuration).
 token_alert_days: 3
 
+# Combien de jours avant la fin du planning une issue d'avertissement est
+# ouverte (réglable depuis la page de configuration).
+planning_alert_days: 2
+
 schedule:
   - date: "2026-09-11"
     start: "00:00"

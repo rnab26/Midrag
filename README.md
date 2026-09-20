@@ -120,6 +120,18 @@ La carte "État du bot" de la page de configuration montre la même
 information (dernière exécution, alerte en cours, date d'expiration du
 token).
 
+### Quand le planning arrive à sa fin
+
+Le planning est daté jour par jour : une fois la dernière date passée, le
+bot continue de tourner, les exécutions restent vertes, mais il ne
+repointe plus rien — et la disponibilité s'arrête sans que personne ne le
+voie. Le bot ouvre donc **une** issue `📅 Bot Midrag : le planning arrive
+à sa fin` quand la dernière date configurée est à moins de
+`planning_alert_days` jours (2 par défaut, réglable depuis la page), ou
+quand il n'y a plus rien du tout. Elle se referme dès que le planning est
+rempli. Un jour réglé sur « pas disponible » compte comme configuré : se
+mettre volontairement hors ligne ne déclenche pas d'alerte.
+
 ### Avant que le bot soit bloqué
 
 La date d'expiration du token est connue à l'avance : inutile d'attendre

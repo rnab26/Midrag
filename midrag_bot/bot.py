@@ -27,7 +27,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
@@ -40,6 +40,11 @@ SET_STATUS_URL = "https://biz-api.midrag.co.il/SliderAvailability/SetSliderStatu
 # Combien de jours avant l'expiration du token on prévient, si config.yaml ne
 # le précise pas (réglable depuis la page de configuration).
 DEFAULT_ALERT_DAYS = 3
+
+# Le planning est daté jour par jour: quand la dernière date est dépassée, le
+# bot continue de tourner mais ne repointe plus rien. On prévient ce nombre de
+# jours avant que le planning n'arrive à sa fin (réglable depuis la page).
+DEFAULT_PLANNING_ALERT_DAYS = 2
 
 # Correspondance entre les modes du config.yaml et les niveaux attendus par
 # l'API Midrag (confirmé via capture réseau du curseur du site).
@@ -76,17 +81,30 @@ class Window:
         return end - to_minutes(self.start)
 
 
-def load_config() -> tuple[ZoneInfo, int, int, list[Window]]:
+@dataclass
+class Config:
+    tz: ZoneInfo
+    sector_id: int
+    token_alert_days: int
+    planning_alert_days: int
+    windows: list[Window]
+
+
+def load_config() -> Config:
     with open(CONFIG_PATH, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
-    tz = ZoneInfo(raw["timezone"])
-    sector_id = raw["sector_id"]
-    alert_days = int(raw.get("token_alert_days", DEFAULT_ALERT_DAYS))
-    windows = [
-        Window(date=w["date"], start=w["start"], end=w["end"], mode=w["mode"])
-        for w in raw["schedule"] or []
-    ]
-    return tz, sector_id, alert_days, windows
+    return Config(
+        tz=ZoneInfo(raw["timezone"]),
+        sector_id=raw["sector_id"],
+        token_alert_days=int(raw.get("token_alert_days", DEFAULT_ALERT_DAYS)),
+        planning_alert_days=int(
+            raw.get("planning_alert_days", DEFAULT_PLANNING_ALERT_DAYS)
+        ),
+        windows=[
+            Window(date=w["date"], start=w["start"], end=w["end"], mode=w["mode"])
+            for w in raw["schedule"] or []
+        ],
+    )
 
 
 def token_expiry(token: str) -> datetime | None:
@@ -137,6 +155,13 @@ ISSUE_TITLE = "⚠️ Bot Midrag : la disponibilité n'est plus maintenue"
 # séparée de celle de panne: ici le bot travaille encore normalement.
 EXPIRY_ISSUE_TITLE = "🔑 Bot Midrag : le token Midrag expire bientôt"
 
+# Fin de planning: ce n'est pas une panne (le job reste vert), mais le
+# résultat est le même côté Midrag — d'où une issue dédiée, pour ne pas
+# mélanger « le bot est cassé » et « tu n'as plus rien programmé ».
+PLANNING_ISSUE_TITLE = "📅 Bot Midrag : le planning arrive à sa fin"
+
+CONFIG_PAGE = "https://rnab26.github.io/Midrag/"
+
 GITHUB_API = "https://api.github.com"
 
 
@@ -171,125 +196,42 @@ def _find_open_issue(
     return None
 
 
-def report_failure(reason: str, detail: str = "") -> None:
-    """Ouvre l'issue de suivi si elle n'existe pas déjà.
+def _open_issue_once(title: str, body: str, kind: str) -> None:
+    """Ouvre l'issue si aucune du même titre n'est déjà ouverte.
 
-    Volontairement silencieux si une issue est déjà ouverte : un commentaire
-    par run rejouerait exactement le flot de notifications qu'on cherche à
-    supprimer."""
-    print(f"[PANNE] {reason}", file=sys.stderr)
-    if detail:
-        print(detail, file=sys.stderr)
-
+    Volontairement silencieux quand elle existe déjà : un commentaire par run
+    rejouerait exactement le flot de notifications qu'on cherche à supprimer."""
     ctx = _github_session()
     if ctx is None:
         print(
-            "GITHUB_TOKEN/GITHUB_REPOSITORY absents : pas d'issue de suivi ouverte.",
+            f"GITHUB_TOKEN/GITHUB_REPOSITORY absents : pas d'{kind} ouverte.",
             file=sys.stderr,
         )
         return
     session, repo = ctx
     try:
-        if _find_open_issue(session, repo) is not None:
-            print("Issue de suivi déjà ouverte, rien à signaler de plus.")
+        if _find_open_issue(session, repo, title) is not None:
+            print(f"{kind.capitalize()} déjà ouverte, rien à signaler de plus.")
             return
-        body = (
-            f"{reason}\n\n"
-            "Tant que ce problème dure, le bot laisse le statut Midrag expirer tout seul.\n\n"
-            "**Quoi faire :** ouvrir la page de planning, coller un token Midrag frais "
-            "(procédure de capture dans le README) et enregistrer.\n\n"
-            "Cette issue se fermera automatiquement dès qu'une exécution du bot repassera au vert.\n"
-        )
-        if detail:
-            body += f"\n<details><summary>Détail technique</summary>\n\n```\n{detail}\n```\n</details>\n"
         resp = session.post(
             f"{GITHUB_API}/repos/{repo}/issues",
-            json={"title": ISSUE_TITLE, "body": body},
+            json={"title": title, "body": body},
             timeout=30,
         )
         resp.raise_for_status()
-        print(f"Issue de suivi ouverte : {resp.json()['html_url']}")
+        print(f"{kind.capitalize()} ouverte : {resp.json()['html_url']}")
     except Exception as exc:  # noqa: BLE001 - best effort, ne doit jamais casser le run
-        print(f"Impossible d'ouvrir l'issue de suivi : {exc}", file=sys.stderr)
+        print(f"Impossible d'ouvrir l'{kind} : {exc}", file=sys.stderr)
 
 
-def clear_failure() -> None:
-    """Referme l'issue de suivi après une exécution réussie."""
+def _close_issue(title: str, comment: str, kind: str) -> None:
+    """Referme l'issue du titre donné, avec un mot expliquant pourquoi."""
     ctx = _github_session()
     if ctx is None:
         return
     session, repo = ctx
     try:
-        issue = _find_open_issue(session, repo)
-        if issue is None:
-            return
-        number = issue["number"]
-        session.post(
-            f"{GITHUB_API}/repos/{repo}/issues/{number}/comments",
-            json={"body": "✅ Le bot a de nouveau repointé la disponibilité avec succès."},
-            timeout=30,
-        )
-        resp = session.patch(
-            f"{GITHUB_API}/repos/{repo}/issues/{number}",
-            json={"state": "closed", "state_reason": "completed"},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        print(f"Issue de suivi #{number} refermée (retour à la normale).")
-    except Exception as exc:  # noqa: BLE001
-        print(f"Impossible de refermer l'issue de suivi : {exc}", file=sys.stderr)
-
-
-def warn_expiry(expiry: datetime, tz: ZoneInfo, alert_days: int) -> None:
-    """Ouvre l'issue d'avertissement si elle n'est pas déjà ouverte.
-
-    Comme pour la panne: une seule issue, silencieuse tant qu'elle est
-    ouverte, pour ne pas rejouer une notification à chaque quart d'heure."""
-    remaining = expiry - datetime.now(timezone.utc)
-    hours = remaining.total_seconds() / 3600
-    delay = f"{hours:.0f} h" if hours < 48 else f"{int(hours // 24)} jours"
-    print(
-        f"[ATTENTION] MIDRAG_TOKEN expire dans {delay} ({expiry.isoformat()})."
-    )
-
-    ctx = _github_session()
-    if ctx is None:
-        return
-    session, repo = ctx
-    try:
-        if _find_open_issue(session, repo, EXPIRY_ISSUE_TITLE) is not None:
-            return
-        body = (
-            f"Le token Midrag expire le **{expiry.astimezone(tz):%d/%m/%Y à %H:%M}** "
-            f"(heure d'Israël), soit dans {delay}.\n\n"
-            "La disponibilité est encore maintenue normalement jusque-là, mais elle "
-            "décrochera à cette date si le token n'est pas renouvelé d'ici là.\n\n"
-            "**Quoi faire :** ouvrir la page de planning, coller un token Midrag frais "
-            "(procédure de capture dans le README) et enregistrer.\n\n"
-            f"Cette issue se fermera automatiquement dès que le token sera renouvelé. "
-            f"Le délai d'avertissement ({alert_days} jours) se règle depuis la page de "
-            "configuration.\n"
-        )
-        resp = session.post(
-            f"{GITHUB_API}/repos/{repo}/issues",
-            json={"title": EXPIRY_ISSUE_TITLE, "body": body},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        print(f"Issue d'avertissement ouverte : {resp.json()['html_url']}")
-    except Exception as exc:  # noqa: BLE001 - best effort, ne doit jamais casser le run
-        print(f"Impossible d'ouvrir l'issue d'avertissement : {exc}", file=sys.stderr)
-
-
-def clear_expiry_warning(comment: str) -> None:
-    """Referme l'issue d'avertissement (token renouvelé, ou panne déjà
-    signalée par l'issue dédiée)."""
-    ctx = _github_session()
-    if ctx is None:
-        return
-    session, repo = ctx
-    try:
-        issue = _find_open_issue(session, repo, EXPIRY_ISSUE_TITLE)
+        issue = _find_open_issue(session, repo, title)
         if issue is None:
             return
         number = issue["number"]
@@ -304,9 +246,122 @@ def clear_expiry_warning(comment: str) -> None:
             timeout=30,
         )
         resp.raise_for_status()
-        print(f"Issue d'avertissement #{number} refermée.")
+        print(f"{kind.capitalize()} #{number} refermée.")
     except Exception as exc:  # noqa: BLE001
-        print(f"Impossible de refermer l'issue d'avertissement : {exc}", file=sys.stderr)
+        print(f"Impossible de refermer l'{kind} : {exc}", file=sys.stderr)
+
+
+def report_failure(reason: str, detail: str = "") -> None:
+    """Signale une panne qui empêche le bot de travailler."""
+    print(f"[PANNE] {reason}", file=sys.stderr)
+    if detail:
+        print(detail, file=sys.stderr)
+
+    body = (
+        f"{reason}\n\n"
+        "Tant que ce problème dure, le bot laisse le statut Midrag expirer tout seul.\n\n"
+        "**Quoi faire :** ouvrir la page de planning, coller un token Midrag frais "
+        f"(voir {CONFIG_PAGE}) et enregistrer.\n\n"
+        "Cette issue se fermera automatiquement dès qu'une exécution du bot repassera au vert.\n"
+    )
+    if detail:
+        body += f"\n<details><summary>Détail technique</summary>\n\n```\n{detail}\n```\n</details>\n"
+    _open_issue_once(ISSUE_TITLE, body, "issue de suivi")
+
+
+def clear_failure() -> None:
+    """Referme l'issue de suivi après une exécution réussie."""
+    _close_issue(
+        ISSUE_TITLE,
+        "✅ Le bot a de nouveau repointé la disponibilité avec succès.",
+        "issue de suivi",
+    )
+
+
+def warn_expiry(expiry: datetime, tz: ZoneInfo, alert_days: int) -> None:
+    """Prévient que le token approche de son expiration."""
+    remaining = expiry - datetime.now(timezone.utc)
+    hours = remaining.total_seconds() / 3600
+    delay = f"{hours:.0f} h" if hours < 48 else f"{int(hours // 24)} jours"
+    print(f"[ATTENTION] MIDRAG_TOKEN expire dans {delay} ({expiry.isoformat()}).")
+
+    body = (
+        f"Le token Midrag expire le **{expiry.astimezone(tz):%d/%m/%Y à %H:%M}** "
+        f"(heure d'Israël), soit dans {delay}.\n\n"
+        "La disponibilité est encore maintenue normalement jusque-là, mais elle "
+        "décrochera à cette date si le token n'est pas renouvelé d'ici là.\n\n"
+        f"**Quoi faire :** ouvrir la page de planning ({CONFIG_PAGE}), coller un token "
+        "Midrag frais et enregistrer.\n\n"
+        "Cette issue se fermera automatiquement dès que le token sera renouvelé. "
+        f"Le délai d'avertissement ({alert_days} jours) se règle depuis la page de "
+        "configuration.\n"
+    )
+    _open_issue_once(EXPIRY_ISSUE_TITLE, body, "issue d'avertissement")
+
+
+def clear_expiry_warning(comment: str) -> None:
+    """Referme l'issue d'avertissement (token renouvelé, ou panne déjà
+    signalée par l'issue dédiée)."""
+    _close_issue(EXPIRY_ISSUE_TITLE, comment, "issue d'avertissement")
+
+
+def warn_planning(last_date: str | None, today: date, alert_days: int, tz: ZoneInfo) -> None:
+    """Prévient que le planning est fini, ou sur le point de l'être.
+
+    Un planning épuisé n'est pas une panne: le bot tourne, les exécutions
+    restent vertes, il n'y a simplement plus rien à repointer. Sans ce
+    signalement, la disponibilité s'arrête sans que personne ne le voie."""
+    if last_date is None:
+        headline = (
+            "**Plus aucun créneau n'est configuré à partir d'aujourd'hui.** Le bot "
+            "tourne toujours, mais il ne repointe plus rien : ta disponibilité "
+            "Midrag n'est plus maintenue."
+        )
+        print("[PLANNING] Aucun créneau configuré à partir d'aujourd'hui.")
+    else:
+        remaining_days = (date.fromisoformat(last_date) - today).days
+        quand = "aujourd'hui" if remaining_days == 0 else (
+            "demain" if remaining_days == 1 else f"dans {remaining_days} jours"
+        )
+        headline = (
+            f"**Ton planning s'arrête le {date.fromisoformat(last_date):%d/%m/%Y}**, "
+            f"soit {quand}. Passé cette date, le bot continuera de tourner sans rien "
+            "repointer : ta disponibilité Midrag ne sera plus maintenue."
+        )
+        print(f"[PLANNING] Dernier créneau configuré le {last_date}.")
+
+    body = (
+        f"{headline}\n\n"
+        f"**Quoi faire :** ouvrir la page de planning ({CONFIG_PAGE}) et remplir les "
+        "jours qui viennent.\n\n"
+        "Un jour réglé sur « pas disponible » compte comme configuré : cette alerte ne "
+        "se déclenche que quand il n'y a plus rien du tout.\n\n"
+        "Cette issue se fermera automatiquement dès que le planning sera rempli. "
+        f"Le délai d'avertissement ({alert_days} jours) se règle depuis la page de "
+        "configuration.\n"
+    )
+    _open_issue_once(PLANNING_ISSUE_TITLE, body, "issue de planning")
+
+
+def clear_planning_warning() -> None:
+    """Referme l'issue de planning dès qu'il y a de nouveau des créneaux."""
+    _close_issue(
+        PLANNING_ISSUE_TITLE,
+        "✅ Le planning est de nouveau rempli pour les jours qui viennent.",
+        "issue de planning",
+    )
+
+
+def check_planning(windows: list[Window], now: datetime, alert_days: int, tz: ZoneInfo) -> None:
+    """Compare la dernière date configurée à l'horizon d'alerte."""
+    today = now.date()
+    today_str = today.isoformat()
+    future = sorted(w.date for w in windows if w.date >= today_str)
+    last_date = future[-1] if future else None
+    if last_date is None or date.fromisoformat(last_date) <= today + timedelta(days=alert_days):
+        warn_planning(last_date, today, alert_days, tz)
+    else:
+        clear_planning_warning()
 
 
 def main() -> int:
@@ -315,7 +370,9 @@ def main() -> int:
         report_failure("Le secret `MIDRAG_TOKEN` est absent de l'environnement du workflow.")
         return 0
 
-    tz, sector_id, alert_days, windows = load_config()
+    cfg = load_config()
+    tz, sector_id, windows = cfg.tz, cfg.sector_id, cfg.windows
+    alert_days = cfg.token_alert_days
     now = datetime.now(tz)
 
     expiry = token_expiry(token)
@@ -336,6 +393,8 @@ def main() -> int:
             warn_expiry(expiry, tz, alert_days)
         else:
             clear_expiry_warning("✅ Token renouvelé, l'échéance est repoussée.")
+
+    check_planning(windows, now, cfg.planning_alert_days, tz)
 
     # Plusieurs créneaux peuvent se chevaucher pour la même date (ex: toute
     # la journée en "now", avec une sous-plage plus précise en "today") —
