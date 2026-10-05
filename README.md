@@ -32,7 +32,25 @@ environ **une fois par mois**, au lieu de pointer toutes les heures.
 
 ### 1. Récupérer ton token Midrag (à refaire ~1x/mois)
 
-**Au téléphone :** la page `docs/token.html` (lien "Récupérer un token"
+**Le plus simple (téléphone, sans favori ni ordinateur) :** sur la page de
+configuration, carte « Renouveler le token Midrag ».
+
+1. Une seule fois : tape ton code fournisseur, ton téléphone et ton n°
+   d'entreprise, puis « Activer ». Ils vont dans les secrets chiffrés du
+   repo, avec une copie du jeton GitHub de la page (un workflow ne peut pas
+   écrire un secret avec son propre jeton).
+2. Chaque mois : « Renouveler le token » → Midrag t'envoie un SMS → tu tapes
+   les 6 chiffres → « Valider ». Si tu quittes la page pour lire le SMS, elle
+   te remet directement sur la saisie du code.
+
+Derrière, le workflow `midrag-renew.yml` (script `midrag_bot/renew.py`) fait
+les 3 appels de connexion côté serveur, ce que le navigateur ne peut pas
+(CORS) — d'où le favori d'avant, gardé uniquement en dépannage. Les tests :
+`python -m unittest midrag_bot/test_renew.py`.
+
+**Dépannage — au téléphone avec un favori :**
+
+la page `docs/token.html` (lien "Récupérer un token"
 depuis la page de planning) installe un favori `javascript:` à poser une
 fois. Sur le site Midrag, ce favori rejoue la connexion officielle —
 `Account/Login` → `Account/SendCode` → `Account/Token`, les trois appels
