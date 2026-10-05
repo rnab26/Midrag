@@ -17,7 +17,7 @@ schedule:
   - date: "2026-10-05"
     start: "00:00"
     end: "23:59"
-    mode: "unavailable"
+    mode: "now"
   - date: "2026-10-06"
     start: "00:00"
     end: "23:59"
