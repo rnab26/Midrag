@@ -120,6 +120,15 @@ La carte "État du bot" de la page de configuration montre la même
 information (dernière exécution, alerte en cours, date d'expiration du
 token).
 
+### Quand GitHub n'attribue pas de runner
+
+Parfois (incident GitHub Actions) un run reste en file sans qu'aucune étape
+ne s'exécute, puis finit « failure » après ~15 min avec un mail à la clé —
+alors que le code du bot n'est pas en cause. Le workflow a donc un groupe
+`concurrency` (le ping le plus récent remplace celui qui attend : annulé,
+sans mail) et un `timeout-minutes: 5`. Dans le bot, un timeout/5xx de Midrag
+est réessayé 3 fois avant de signaler une panne.
+
 ### Quand le planning arrive à sa fin
 
 Le planning est daté jour par jour : une fois la dernière date passée, le

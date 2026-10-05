@@ -15,9 +15,20 @@ permissions:
   contents: read
   issues: write
 
+# Un seul ping à la fois. Quand GitHub n'attribue pas de runner (incident
+# côté Actions), les runs s'empilaient en file et finissaient « failure »
+# après ~15 min, chacun envoyant un mail. Le ping est idempotent : le plus
+# récent remplace donc celui qui attend ou tourne encore (annulé, pas en
+# échec — GitHub n'envoie pas de mail pour une annulation).
+concurrency:
+  group: midrag-ping
+  cancel-in-progress: true
+
 jobs:
   ping-availability:
     runs-on: ubuntu-latest
+    # Un ping réel dure ~10 s ; au-delà, c'est bloqué.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
