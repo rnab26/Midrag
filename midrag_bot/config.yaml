@@ -14,14 +14,10 @@ token_alert_days: 3
 planning_alert_days: 2
 
 schedule:
-  - date: "2026-10-04"
-    start: "00:00"
-    end: "23:59"
-    mode: "now"
   - date: "2026-10-05"
     start: "00:00"
     end: "23:59"
-    mode: "now"
+    mode: "unavailable"
   - date: "2026-10-06"
     start: "00:00"
     end: "23:59"
