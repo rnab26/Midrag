@@ -28,7 +28,7 @@
     background: var(--bg);
     color: var(--text);
     padding: 16px;
-    padding-bottom: 64px;
+    padding-bottom: 140px;
   }
   h1 {
     font-size: 1.3rem;
@@ -104,61 +104,81 @@
   .btn-primary:disabled, .btn-secondary:disabled {
     opacity: 0.5;
   }
+  /* --- Barre du haut, menu, panneaux --- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 12px;
+    margin: -16px -16px 12px; padding: 12px 16px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+  }
+  .topbar-title { font-weight: 700; font-size: 1.1rem; flex: 1; }
+  .menu-btn { position: relative; background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 1.3rem; line-height: 1; padding: 8px 12px; border-radius: 10px; }
+  .menu-btn .dot { display: none; position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--err); border: 2px solid var(--bg); }
+  .menu-btn.alert .dot { display: block; }
+  .pill { font-size: 0.8rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: #eceef0; color: var(--muted); }
+  .pill.ok { background: #e6f4ea; color: var(--ok); }
+  .pill.warn { background: #fff3d6; color: #8a5a00; }
+  .pill.err { background: #fbe9e7; color: var(--err); }
+  .backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 50; }
+  .backdrop.open { display: block; }
+  .drawer {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+    width: min(82vw, 320px); background: var(--card); padding: 16px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    transform: translateX(-102%); transition: transform .2s ease; overflow-y: auto;
+  }
+  .drawer.open { transform: none; box-shadow: 4px 0 24px rgba(0,0,0,.2); }
+  .drawer-title { font-weight: 700; font-size: 1.1rem; padding: 4px 12px 12px; }
+  .drawer-item { width: 100%; text-align: left; background: none; color: var(--text); font-weight: 500; font-size: 1rem; padding: 14px 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .drawer-item:active { background: #f0f0f3; }
+  .drawer-item .tag { font-size: 0.7rem; font-weight: 700; color: #fff; background: var(--err); border-radius: 999px; padding: 2px 8px; display: none; }
+  .drawer-item.alert .tag { display: inline-block; }
+  .panel { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto; padding: 0 16px 48px; }
+  .panel[hidden] { display: none; }
+  .panel-head { position: sticky; top: 0; z-index: 1; background: var(--bg); display: flex; align-items: center; gap: 8px; padding: 12px 0; margin-bottom: 4px; }
+  .panel-head h2 { margin: 0; font-size: 1.15rem; }
+  .back-btn { background: none; color: var(--accent); font-size: 1.5rem; line-height: 1; padding: 4px 10px 4px 0; width: auto; }
+  .panel .card > h2 { display: none; }
+  .panel-empty { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; color: var(--muted); font-size: 0.9rem; }
+  body:not(.connected) .panel:not([data-panel="auth"]) .panel-empty { display: block; }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--bg); border-top: 1px solid var(--border); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .savebar .status { margin: 0 0 8px; }
+  /* --- Calendrier : un bloc par jour, des compartiments côte à côte --- */
   .date-block {
-    border-top: 1px solid var(--border);
-    padding: 10px 4px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
   }
-  .date-block.today { background: var(--today-bg); border-radius: 8px; }
-  .date-label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 6px;
-  }
+  .date-block.today { border-color: var(--accent); box-shadow: 0 0 0 2px var(--today-bg), 0 1px 3px rgba(0,0,0,.05); }
+  .date-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .date-label { font-weight: 700; font-size: 0.95rem; }
   .date-label .badge-today {
-    display: inline-block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--accent);
-    margin-left: 4px;
+    display: inline-block; font-size: 0.65rem; font-weight: 700; color: #fff;
+    background: var(--accent); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: middle;
   }
+  #schedule-card { background: none; border: none; padding: 0; margin-bottom: 8px; }
+  #schedule-card > h2 { margin-bottom: 6px; }
+  .slots { display: flex; flex-wrap: wrap; gap: 8px; }
   .slot-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
+    flex: 1 1 calc(50% - 4px); min-width: 0; display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; background: #fafafb; border: 1px solid var(--border); border-left: 5px solid #c4c7cc; border-radius: 10px;
   }
-  .slot-row select { margin-bottom: 0; padding: 8px; font-size: 0.85rem; flex: 1 1 150px; }
-  .slot-row .times { display: none; flex-direction: column; gap: 4px; flex: 1 1 190px; }
+  .slot-row.m-now { border-left-color: #2e9e5b; background: #f3fbf6; }
+  .slot-row.m-today { border-left-color: #e0a100; background: #fffaf0; }
+  .slot-row.m-tomorrow { border-left-color: #2f6fd6; background: #f3f7fe; }
+  .slot-row.m-unavailable { border-left-color: #8b9097; background: #f3f4f5; }
+  .slot-top { display: flex; align-items: center; gap: 2px; }
+  .slot-row select { margin-bottom: 0; padding: 7px 4px; font-size: 0.8rem; flex: 1; min-width: 0; }
+  .slot-row .times { display: none; flex-direction: column; gap: 6px; }
   .slot-row .times.active { display: flex; }
-  .slot-row .time-inputs { display: flex; gap: 6px; }
-  .slot-row .times input[type=time] { width: 100%; padding: 8px; margin-bottom: 0; font-size: 0.85rem; }
-  .full-day-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: var(--muted);
-  }
+  .slot-row .time-inputs { display: flex; flex-direction: column; gap: 4px; }
+  .slot-row .time-row { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
+  .slot-row .time-row span { width: 14px; flex: none; }
+  .slot-row .times input[type=time] { flex: 1; width: 0; min-width: 0; padding: 6px 4px; margin-bottom: 0; font-size: 0.85rem; }
+  .full-day-label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); margin: 0; }
   .full-day-label input { width: auto; margin: 0; }
-  .remove-slot-btn {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 1.1rem;
-    padding: 4px 8px;
-    width: auto;
-  }
+  .remove-slot-btn { background: none; color: var(--muted); font-size: 1rem; padding: 4px 6px; width: auto; }
   .remove-slot-btn:disabled { visibility: hidden; }
-  .add-slot-btn {
-    background: none;
-    border: 1px dashed var(--border);
-    color: var(--accent);
-    font-size: 0.8rem;
-    padding: 6px 10px;
-    width: auto;
-    border-radius: 8px;
-  }
+  .add-slot-btn { background: none; border: 1px dashed var(--accent); color: var(--accent); font-size: 0.8rem; padding: 6px 10px; width: auto; border-radius: 8px; white-space: nowrap; }
   .status {
     font-size: 0.9rem;
     margin-top: 10px;
@@ -201,10 +221,38 @@
 </head>
 <body>
 
-<h1>📅 Midrag — planning de disponibilité</h1>
-<div class="sub">Configure quand le bot doit te maintenir "disponible" automatiquement, jour par jour.</div>
-<button class="btn-secondary" id="install-btn" style="display:none;margin-bottom:16px;">📲 Installer l'application</button>
+<header class="topbar">
+  <button type="button" class="menu-btn" id="menu-btn" aria-label="Menu">☰<span class="dot"></span></button>
+  <div class="topbar-title">Midrag</div>
+  <button type="button" class="pill off" id="bot-pill">Non connecté</button>
+</header>
 
+<div class="backdrop" id="backdrop"></div>
+<nav class="drawer" id="drawer" aria-label="Menu">
+  <div class="drawer-title">Menu</div>
+  <button type="button" class="drawer-item" data-open="state">📊 État du bot <span class="tag">!</span></button>
+  <button type="button" class="drawer-item" data-open="token">🔑 Renouveler le token <span class="tag">!</span></button>
+  <button type="button" class="drawer-item" data-open="notify">🔔 Notifications</button>
+  <button type="button" class="drawer-item" data-open="settings">⚙️ Réglages</button>
+  <button type="button" class="drawer-item" data-open="auth">🔌 Connexion</button>
+  <button type="button" class="drawer-item" id="install-btn" style="display:none;">📲 Installer l'application</button>
+</nav>
+
+<div class="card" id="schedule-card" style="display:none;">
+  <h2>Calendrier de disponibilité</h2>
+  <div class="hint" style="margin-top:0;">Tu peux ajouter plusieurs créneaux sur une même journée (ex: 10h-14h puis 18h-21h) avec "+ Ajouter un créneau". En dehors des créneaux configurés, le bot ne touche à rien — Midrag applique alors sa propre expiration automatique (voir l'explication dans le chat).</div>
+  <div id="dates-list"></div>
+  <button class="btn-secondary" id="more-btn" style="margin-top:4px;">+ Voir 7 jours de plus</button>
+</div>
+
+<div class="savebar">
+  <div class="status js-status" id="status"></div>
+  <button class="btn-primary js-save" id="save-btn">Enregistrer le planning</button>
+</div>
+
+<section class="panel" id="panel-auth" data-panel="auth" hidden>
+  <div class="panel-head"><button type="button" class="back-btn" data-close aria-label="Retour">←</button><h2>Connexion</h2></div>
+  <div class="panel-empty">Connecte-toi d'abord : menu ☰ → Connexion.</div>
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
   <label for="pat">Jeton d'accès GitHub (<code>github_pat_…</code> ou <code>ghp_…</code>)</label>
@@ -234,14 +282,26 @@
   </details>
 </div>
 
+</section>
+
+<section class="panel" id="panel-state" data-panel="state" hidden>
+  <div class="panel-head"><button type="button" class="back-btn" data-close aria-label="Retour">←</button><h2>État du bot</h2></div>
+  <div class="panel-empty">Connecte-toi d'abord : menu ☰ → Connexion.</div>
 <div class="card" id="state-card" style="display:none;">
   <h2>État du bot</h2>
   <div id="state-banner" class="banner" style="display:none;"></div>
   <div class="state-line"><span class="k">Dernière exécution</span><span class="v" id="state-run">…</span></div>
   <div class="state-line"><span class="k">Token Midrag</span><span class="v" id="state-token">…</span></div>
   <button class="btn-secondary" id="refresh-state-btn" style="margin-top:12px;">Rafraîchir l'état</button>
+  <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
+  <div class="status js-status"></div>
 </div>
 
+</section>
+
+<section class="panel" id="panel-token" data-panel="token" hidden>
+  <div class="panel-head"><button type="button" class="back-btn" data-close aria-label="Retour">←</button><h2>Renouveler le token</h2></div>
+  <div class="panel-empty">Connecte-toi d'abord : menu ☰ → Connexion.</div>
 <div class="card" id="token-card" style="display:none;">
   <h2>Renouveler le token Midrag</h2>
 
@@ -273,9 +333,14 @@
 
 </div>
 
+</section>
+
+<section class="panel" id="panel-notify" data-panel="notify" hidden>
+  <div class="panel-head"><button type="button" class="back-btn" data-close aria-label="Retour">←</button><h2>Notifications</h2></div>
+  <div class="panel-empty">Connecte-toi d'abord : menu ☰ → Connexion.</div>
 <div class="card" id="notify-card" style="display:none;">
   <h2>Notifications sur ce téléphone</h2>
-  <div class="hint" style="margin-top:0;">Reçois une notification quand le token Midrag doit être renouvelé (une par jour, à l'heure réglée plus bas, pendant les jours qui précèdent l'expiration) ou quand le bot est bloqué. Un seul appareil à la fois : le dernier sur lequel tu les actives.</div>
+  <div class="hint" style="margin-top:0;">Reçois une notification quand le token Midrag doit être renouvelé (une par jour, à l'heure réglée dans Réglages, pendant les jours qui précèdent l'expiration) ou quand le bot est bloqué. Un seul appareil à la fois : le dernier sur lequel tu les actives.</div>
   <div id="notify-off" style="display:none;">
     <button class="btn-primary" id="notify-enable-btn">Activer les notifications</button>
   </div>
@@ -287,13 +352,14 @@
   <div class="status" id="notify-status"></div>
 </div>
 
-<div class="card" id="schedule-card" style="display:none;">
-  <h2>Calendrier de disponibilité</h2>
-  <div class="hint" style="margin-top:0;">Tu peux ajouter plusieurs créneaux sur une même journée (ex: 10h-14h puis 18h-21h) avec "+ Ajouter un créneau". En dehors des créneaux configurés, le bot ne touche à rien — Midrag applique alors sa propre expiration automatique (voir l'explication dans le chat).</div>
-  <div id="dates-list"></div>
-  <button class="btn-secondary" id="more-btn" style="margin-top:12px;">+ Voir 7 jours de plus</button>
+</section>
 
-  <label for="sector" style="margin-top:16px;">Secteur Midrag (sectorId)</label>
+<section class="panel" id="panel-settings" data-panel="settings" hidden>
+  <div class="panel-head"><button type="button" class="back-btn" data-close aria-label="Retour">←</button><h2>Réglages</h2></div>
+  <div class="panel-empty">Connecte-toi d'abord : menu ☰ → Connexion.</div>
+<div class="card" id="settings-card" style="display:none;">
+  <h2>Réglages</h2>
+  <label for="sector">Secteur Midrag (sectorId)</label>
   <input type="number" id="sector" value="21">
 
   <label for="cadence">Fréquence de réactualisation</label>
@@ -338,7 +404,7 @@
     <option value="21">21h00</option>
     <option value="22">22h00</option>
   </select>
-  <div class="hint">Heure d'Israël. La notification ne part que si tu as activé les notifications plus haut.</div>
+  <div class="hint">Heure d'Israël. La notification ne part que si tu as activé les notifications (menu → Notifications).</div>
 
   <label for="planning-alert-days">Prévenir avant la fin du planning</label>
   <select id="planning-alert-days">
@@ -350,21 +416,20 @@
   </select>
   <div class="hint">Le planning est daté jour par jour : quand la dernière date est passée, le bot tourne sans rien repointer. Une issue s'ouvre à l'approche de cette date, et se referme dès que tu remets des créneaux. Un jour réglé sur « Pas disponible » compte comme configuré.</div>
 
-  <button class="btn-primary" id="save-btn">Enregistrer le planning</button>
-  <button class="btn-secondary" id="run-btn" style="margin-top:8px;">Lancer une exécution maintenant</button>
-
-  <div class="status" id="status"></div>
+  <button class="btn-primary js-save" id="save-btn-2">Enregistrer les réglages</button>
+  <div class="status js-status"></div>
 </div>
+</section>
 
 <script>
 const DAY_NAMES = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 const MONTH_NAMES = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const MODES = [
-  { value: "", label: "— Ne rien faire —" },
-  { value: "now", label: "Disponible maintenant" },
-  { value: "today", label: "Disponible aujourd'hui" },
-  { value: "tomorrow", label: "Disponible demain" },
-  { value: "unavailable", label: "Pas disponible" },
+  { value: "", label: "Ne rien faire" },
+  { value: "now", label: "Dispo maintenant" },
+  { value: "today", label: "Dispo aujourd'hui" },
+  { value: "tomorrow", label: "Dispo demain" },
+  { value: "unavailable", label: "Pas dispo" },
 ];
 const CONFIG_PATH = "midrag_bot/config.yaml";
 const DEFAULT_ALERT_DAYS = "3";
@@ -375,12 +440,21 @@ const INITIAL_DAYS = 14;
 const EXTEND_DAYS = 7;
 
 const $ = (id) => document.getElementById(id);
-const statusEl = $("status");
 let visibleDates = [];
 
+let statusTimer = null;
 function setStatus(kind, msg) {
-  statusEl.className = "status show " + kind;
-  statusEl.textContent = msg;
+  document.querySelectorAll(".js-status").forEach((el) => {
+    el.className = "status js-status show " + kind;
+    el.textContent = msg;
+  });
+  // Un succès s'efface seul : la barre du bas ne doit pas rester encombrée.
+  clearTimeout(statusTimer);
+  if (kind === "ok") {
+    statusTimer = setTimeout(() => {
+      document.querySelectorAll(".js-status").forEach((el) => { el.className = "status js-status"; });
+    }, 6000);
+  }
 }
 
 function todayJerusalem() {
@@ -455,20 +529,22 @@ function addSlot(dateBlock, data) {
   const slot = document.createElement("div");
   slot.className = "slot-row";
   slot.innerHTML = `
-    <select class="mode-select">
-      ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
-    </select>
+    <div class="slot-top">
+      <select class="mode-select">
+        ${MODES.map(m => `<option value="${m.value}">${m.label}</option>`).join("")}
+      </select>
+      <button type="button" class="remove-slot-btn" title="Supprimer ce créneau">✕</button>
+    </div>
     <div class="times">
+      <div class="time-inputs">
+        <label class="time-row"><span>De</span><input type="time" class="start-input" value="08:00"></label>
+        <label class="time-row"><span>À</span><input type="time" class="end-input" value="20:00"></label>
+      </div>
       <label class="full-day-label">
         <input type="checkbox" class="full-day-check">
         Toute la journée
       </label>
-      <div class="time-inputs">
-        <input type="time" class="start-input" value="08:00">
-        <input type="time" class="end-input" value="20:00">
-      </div>
     </div>
-    <button type="button" class="remove-slot-btn" title="Supprimer ce créneau">✕</button>
   `;
   slots.appendChild(slot);
 
@@ -478,8 +554,12 @@ function addSlot(dateBlock, data) {
   const timeInputs = slot.querySelector(".time-inputs");
   const removeBtn = slot.querySelector(".remove-slot-btn");
 
+  const tint = () => {
+    slot.className = "slot-row" + (select.value ? " m-" + select.value : "");
+  };
   select.addEventListener("change", () => {
     times.classList.toggle("active", select.value !== "");
+    tint();
   });
   fullDay.addEventListener("change", () => {
     timeInputs.style.display = fullDay.checked ? "none" : "flex";
@@ -494,6 +574,7 @@ function addSlot(dateBlock, data) {
     slot.querySelector(".start-input").value = data.start;
     slot.querySelector(".end-input").value = data.end;
     times.classList.add("active");
+    tint();
     const isFullDay = data.start === "00:00" && data.end === "23:59";
     fullDay.checked = isFullDay;
     timeInputs.style.display = isFullDay ? "none" : "flex";
@@ -509,9 +590,11 @@ function addDateBlock(dateStr) {
   block.dataset.date = dateStr;
   const todayBadge = dateStr === todayJerusalem() ? '<span class="badge-today">AUJOURD\'HUI</span>' : "";
   block.innerHTML = `
-    <div class="date-label">${formatDateLabel(dateStr)}${todayBadge}</div>
+    <div class="date-head">
+      <div class="date-label">${formatDateLabel(dateStr)}${todayBadge}</div>
+      <button type="button" class="add-slot-btn">+ Créneau</button>
+    </div>
     <div class="slots"></div>
-    <button type="button" class="add-slot-btn">+ Ajouter un créneau</button>
   `;
   list.appendChild(block);
   addSlot(block, null);
@@ -728,10 +811,13 @@ async function loadAll() {
     parseConfig(cfg.content);
     parseCadence(wf.content);
     $("schedule-card").style.display = "block";
+    $("settings-card").style.display = "block";
+    document.body.classList.add("connected");
+    closePanel();
     $("token-card").style.display = "block";
     renewInit();
     notifyInit();
-    setStatus("ok", "Planning actuel chargé.");
+    setStatus("ok", "Connecté ✔ — planning chargé.");
     refreshState();
     localStorage.setItem("midrag_pat", $("pat").value.trim());
     localStorage.setItem("midrag_owner", $("owner").value.trim());
@@ -744,7 +830,7 @@ async function loadAll() {
 
 async function saveAll() {
   setStatus("pending", "Enregistrement…");
-  $("save-btn").disabled = true;
+  document.querySelectorAll(".js-save").forEach((b) => { b.disabled = true; });
   try {
     const cfg = await ghGet(CONFIG_PATH);
     await ghPut(CONFIG_PATH, buildConfigYaml(), cfg.sha, "Update schedule via config page");
@@ -758,7 +844,7 @@ async function saveAll() {
   } catch (e) {
     setStatus("err", e.message);
   } finally {
-    $("save-btn").disabled = false;
+    document.querySelectorAll(".js-save").forEach((b) => { b.disabled = false; });
   }
 }
 
@@ -843,6 +929,7 @@ async function refreshState() {
   $("state-card").style.display = "block";
   await syncTokenExpiry();
   renderTokenExpiry();
+  updatePill();
 
   try {
     const res = await fetch(
@@ -873,16 +960,18 @@ async function refreshState() {
                             { cache: "no-store", headers: ghHeaders() });
     if (!res.ok) throw new Error(`${res.status}`);
     const alert = (await res.json()).find(i => i.title === ISSUE_TITLE && !i.pull_request);
+    botBlocked = !!alert;
     if (alert) {
       banner.style.display = "block";
       banner.innerHTML = "⚠️ <strong>Le bot ne maintient plus ta disponibilité.</strong> " +
-        `Touche « Renouveler le token » ci-dessous. <a href="${alert.html_url}" target="_blank" rel="noopener">Voir le détail</a>`;
+        `Menu ☰ → « Renouveler le token ». <a href="${alert.html_url}" target="_blank" rel="noopener">Voir le détail</a>`;
     } else {
       banner.style.display = "none";
     }
   } catch (e) {
     banner.style.display = "none";
   }
+  updatePill();
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,6 +1200,7 @@ async function renewVerify() {
     showRenewStep("start");
     await syncTokenExpiry();
     renderTokenExpiry();
+    updatePill();
     setTokenStatus("ok", "Token renouvelé ✔ — test du bot en cours…");
     const test = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
       method: "POST",
@@ -1328,6 +1418,58 @@ async function notifyTest() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Menu ☰ et panneaux : la page principale ne montre que le calendrier ; la
+// connexion, l'état du bot, le renouvellement du token, les notifications et
+// les réglages vivent chacun dans leur panneau, ouvert depuis le menu. Le
+// bouton « retour » d'Android referme le panneau (historique du navigateur).
+// ---------------------------------------------------------------------------
+let botBlocked = false;
+
+function openDrawer() { $("drawer").classList.add("open"); $("backdrop").classList.add("open"); }
+function closeDrawer() { $("drawer").classList.remove("open"); $("backdrop").classList.remove("open"); }
+
+function openPanel(name, push = true) {
+  closeDrawer();
+  document.querySelectorAll(".panel").forEach((p) => { p.hidden = p.dataset.panel !== name; });
+  document.body.style.overflow = "hidden";
+  if (push) history.pushState({ panel: name }, "");
+  if (name === "state" && document.body.classList.contains("connected")) refreshState();
+}
+
+function closePanel(fromHistory = false) {
+  const wasOpen = [...document.querySelectorAll(".panel")].some((p) => !p.hidden);
+  document.querySelectorAll(".panel").forEach((p) => { p.hidden = true; });
+  document.body.style.overflow = "";
+  if (!fromHistory && wasOpen && history.state && history.state.panel) history.back();
+}
+
+function updatePill() {
+  const pill = $("bot-pill");
+  let kind = "off", text = "Non connecté", needsToken = false;
+  if (document.body.classList.contains("connected")) {
+    const stored = localStorage.getItem("midrag_token_exp");
+    const days = stored ? (new Date(stored).getTime() - Date.now()) / 86400000 : null;
+    const alertDays = Number($("alert-days").value || DEFAULT_ALERT_DAYS);
+    if (botBlocked || (days !== null && days < 0)) { kind = "err"; text = "⚠️ Bot bloqué"; needsToken = true; }
+    else if (days !== null && days <= alertDays) { kind = "warn"; text = "🔑 Token à renouveler"; needsToken = true; }
+    else { kind = "ok"; text = "✔ Bot actif"; }
+  }
+  pill.className = "pill " + kind;
+  pill.textContent = text;
+  $("menu-btn").classList.toggle("alert", needsToken);
+  document.querySelectorAll('.drawer-item[data-open="state"], .drawer-item[data-open="token"]')
+    .forEach((el) => el.classList.toggle("alert", needsToken));
+}
+
+$("menu-btn").addEventListener("click", openDrawer);
+$("backdrop").addEventListener("click", closeDrawer);
+$("bot-pill").addEventListener("click", () => openPanel(document.body.classList.contains("connected") ? "state" : "auth"));
+document.querySelectorAll("[data-open]").forEach((el) => el.addEventListener("click", () => openPanel(el.dataset.open)));
+document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => closePanel()));
+window.addEventListener("popstate", () => closePanel(true));
+$("install-btn").addEventListener("click", closeDrawer);
+
 appendDates(INITIAL_DAYS);
 
 const savedPat = localStorage.getItem("midrag_pat");
@@ -1341,10 +1483,11 @@ if (savedPat) {
 
 renderPatWarning();
 $("pat").addEventListener("input", renderPatWarning);
+if (!savedPat) openPanel("auth", false);
 
 $("connect-btn").addEventListener("click", loadAll);
 $("diag-btn").addEventListener("click", diagnosePat);
-$("save-btn").addEventListener("click", saveAll);
+document.querySelectorAll(".js-save").forEach((b) => b.addEventListener("click", saveAll));
 $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
 $("refresh-state-btn").addEventListener("click", refreshState);
