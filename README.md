@@ -22,74 +22,39 @@ avoir à cliquer toutes les heures.
 ### Pourquoi pas une connexion 100% automatique ?
 
 Midrag exige un code reçu par SMS à chaque connexion (téléphone + n°
-d'entreprise + code SMS → token). Ça ne peut pas être automatisé sans
-accès à tes SMS. À la place, le bot utilise directement le **token** que
-Midrag délivre après une connexion manuelle — ce token reste valable
-plusieurs semaines. Il te suffit donc de refaire la procédure ci-dessous
-environ **une fois par mois**, au lieu de pointer toutes les heures.
+d'entreprise + code SMS → token). Ce code ne peut pas être récupéré par le
+bot : il faut le taper. Le bot utilise donc le **token** que Midrag délivre
+après la connexion, valable environ un mois, et le renouvellement se fait
+en un tap depuis la page (voir ci-dessous) : **une fois par mois**, au lieu
+de pointer toutes les heures.
 
 ## Mise en place
 
-### 1. Récupérer ton token Midrag (à refaire ~1x/mois)
+### 1. Renouveler ton token Midrag (~1x/mois, au téléphone)
 
-**Le plus simple (téléphone, sans favori ni ordinateur) :** sur la page de
-configuration, carte « Renouveler le token Midrag ».
+Sur la page de configuration, carte « Renouveler le token Midrag » :
 
-1. Une seule fois : tape ton code fournisseur, ton téléphone et ton n°
-   d'entreprise, puis « Activer ». Ils vont dans les secrets chiffrés du
-   repo, avec une copie du jeton GitHub de la page (un workflow ne peut pas
-   écrire un secret avec son propre jeton).
-2. Chaque mois : « Renouveler le token » → Midrag t'envoie un SMS → tu tapes
-   les 6 chiffres → « Valider ». Si tu quittes la page pour lire le SMS, elle
-   te remet directement sur la saisie du code.
+1. **Une seule fois** : tape ton code fournisseur, ton téléphone et ton n°
+   d'entreprise, puis « Activer le renouvellement ». Ils vont dans les
+   secrets chiffrés du repo, avec une copie du jeton GitHub de la page (un
+   workflow ne peut pas écrire un secret avec son propre jeton).
+2. **Chaque mois** : « Renouveler le token » → Midrag t'envoie un SMS → tu
+   tapes les 6 chiffres → « Valider ». Si tu quittes la page pour lire le
+   SMS, elle te remet directement sur la saisie du code.
 
 Derrière, le workflow `midrag-renew.yml` (script `midrag_bot/renew.py`) fait
-les 3 appels de connexion côté serveur, ce que le navigateur ne peut pas
-(CORS) — d'où le favori d'avant, gardé uniquement en dépannage. Les tests :
-`python -m unittest midrag_bot/test_renew.py`.
-
-**Dépannage — au téléphone avec un favori :**
-
-la page `docs/token.html` (lien "Récupérer un token"
-depuis la page de planning) installe un favori `javascript:` à poser une
-fois. Sur le site Midrag, ce favori rejoue la connexion officielle —
-`Account/Login` → `Account/SendCode` → `Account/Token`, les trois appels
-du formulaire du site — te demande le code reçu par SMS ou WhatsApp, et
-affiche le token avec un bouton "Copier". Plus d'outils développeur.
-
-Ce détour par un favori est nécessaire parce que Midrag restreint les
-appels navigateur à son propre domaine (CORS) : la page de planning ne
-peut pas se connecter à ta place, alors que le favori, lui, s'exécute
-dans la page Midrag. Le code lisible est dans `docs/token-bookmarklet.js`
-(le favori le charge depuis GitHub Pages, donc une amélioration ne
-demande pas de réinstaller quoi que ce soit).
-
-**À la main (sur ordinateur) :**
-
-1. Va sur `bizn.midrag.co.il` et connecte-toi normalement (téléphone + n°
-   d'entreprise + code SMS).
-2. Une fois sur la page de disponibilité, ouvre les outils développeur du
-   navigateur (`F12`), onglet **Network**, filtre **Fetch/XHR**.
-3. Cherche dans l'historique la requête **`Token`** (elle a eu lieu pendant
-   la connexion — si tu ne la vois pas, déconnecte-toi et refais la
-   procédure de connexion avec Network déjà ouvert).
-4. Onglet **Response** de cette requête → copie la valeur de `data.token`
-   (une longue chaîne commençant par `eyJ...`). C'est ton nouveau token.
+les 3 appels de connexion Midrag (`Account/Login` → `SendCode` → `Token`)
+côté serveur, ce qu'un navigateur ne peut pas faire (CORS). Si Midrag change
+sa connexion et que ça échoue, la page affiche le lien du run en échec.
 
 ### 2. Secret GitHub
 
-Le token vit dans le secret `MIDRAG_TOKEN` du repo. Deux façons de le
-renseigner :
-
-- **Depuis la page de configuration (recommandé, marche au téléphone)** :
-  carte "Renouveler le token Midrag" → colle le token → "Enregistrer le
-  token et tester". La page vérifie sa date d'expiration, le chiffre dans
-  ton navigateur (sealed box libsodium, comme le fait GitHub CLI), écrit
-  le secret via l'API et déclenche une exécution de test. Le token n'est
-  jamais écrit dans le repo ni conservé par la page. Le jeton GitHub
-  utilisé par la page doit avoir la permission `Secrets: Read and write`.
-- **À la main** : `Settings` → `Secrets and variables` → `Actions` →
-  secret `MIDRAG_TOKEN`.
+Le token vit dans le secret `MIDRAG_TOKEN` du repo ; le renouvellement de la
+section 1 l'écrit tout seul (chiffré dans ton navigateur puis envoyé via
+l'API, jamais écrit dans le repo ni conservé par la page). Le jeton GitHub
+de la page doit avoir la permission `Secrets: Read and write`. Écriture à la
+main possible : `Settings` → `Secrets and variables` → `Actions` → secret
+`MIDRAG_TOKEN`.
 
 ### 3. Planning — page de configuration
 
@@ -159,13 +124,39 @@ quand il n'y a plus rien du tout. Elle se referme dès que le planning est
 rempli. Un jour réglé sur « pas disponible » compte comme configuré : se
 mettre volontairement hors ligne ne déclenche pas d'alerte.
 
+### Installer l'application et recevoir les notifications
+
+La page est une appli installable (PWA) : dans Chrome sur Android, bouton
+« 📲 Installer l'application » en haut de la page, ou menu ⋮ → « Installer
+l'application ». Elle s'ouvre alors comme une appli, sans barre d'adresse.
+
+Carte « Notifications sur ce téléphone » → « Activer les notifications »,
+puis « Envoyer une notification test » pour vérifier. Tu reçois ensuite :
+
+- **un rappel par jour**, à l'heure réglée (« Heure de la notification de
+  rappel », 9h00 par défaut, heure d'Israël), pendant les
+  `token_alert_days` jours avant l'expiration du token, puis tous les jours
+  tant qu'il n'est pas renouvelé ;
+- **une alerte** quand le bot se bloque (token expiré ou rejeté).
+
+Toucher la notification ouvre la page sur le bouton de renouvellement. Les
+issues GitHub restent en parallèle, comme filet de sécurité.
+
+Sous le capot : le service worker `docs/sw.js` affiche les notifications ;
+la page crée à la première activation une paire de clés VAPID (la privée
+dans le secret `VAPID_PRIVATE_KEY`, la publique dans
+`midrag_bot/push_public_key.txt`) et range l'abonnement du téléphone dans le
+secret `WEBPUSH_SUBSCRIPTION`. Le bot signe et chiffre ses envois
+(`midrag_bot/push.py`, bibliothèque `pywebpush`). Un seul appareil reçoit les
+notifications à la fois : le dernier activé. Pas pris en charge sur iPhone.
+
 ### Avant que le bot soit bloqué
 
 La date d'expiration du token est connue à l'avance : inutile d'attendre
 que la disponibilité décroche pour prévenir. Quand il reste moins de
 `token_alert_days` jours (3 par défaut, réglable depuis la page de
-configuration — "Prévenir avant l'expiration du token"), le bot ouvre
-**une** issue `🔑 Bot Midrag : le token Midrag expire bientôt`, muette
+configuration — "Prévenir avant l'expiration du token"), le bot t'envoie le
+rappel push quotidien (voir plus haut) et ouvre **une** issue `🔑 Bot Midrag : le token Midrag expire bientôt`, muette
 ensuite comme celle de panne, et refermée automatiquement dès que le
 token est renouvelé.
 

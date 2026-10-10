@@ -34,6 +34,8 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
+from push import send_push
+
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
 
 SET_STATUS_URL = "https://biz-api.midrag.co.il/SliderAvailability/SetSliderStatus"
@@ -46,6 +48,17 @@ DEFAULT_ALERT_DAYS = 3
 # bot continue de tourner mais ne repointe plus rien. On prévient ce nombre de
 # jours avant que le planning n'arrive à sa fin (réglable depuis la page).
 DEFAULT_PLANNING_ALERT_DAYS = 2
+
+# Rappel push du token : une fois par jour à cette heure (Asia/Jerusalem),
+# tant qu'il reste moins de token_alert_days jours, puis tant qu'il n'est pas
+# renouvelé. Réglable depuis la page de configuration.
+DEFAULT_NOTIFY_HOUR = 9
+
+# Le bot tourne toutes les 15-30 min : on accepte tout run tombant dans cette
+# fenêtre après l'heure du rappel. Un run raté n'efface pas le rappel (le
+# lendemain en envoie un autre) et un doublon est absorbé par le `tag` de la
+# notification, qui remplace la précédente.
+REMINDER_WINDOW_MINUTES = 30
 
 # Correspondance entre les modes du config.yaml et les niveaux attendus par
 # l'API Midrag (confirmé via capture réseau du curseur du site).
@@ -88,6 +101,7 @@ class Config:
     sector_id: int
     token_alert_days: int
     planning_alert_days: int
+    notify_hour: int
     windows: list[Window]
 
 
@@ -101,6 +115,7 @@ def load_config() -> Config:
         planning_alert_days=int(
             raw.get("planning_alert_days", DEFAULT_PLANNING_ALERT_DAYS)
         ),
+        notify_hour=int(raw.get("notify_hour", DEFAULT_NOTIFY_HOUR)),
         windows=[
             Window(date=w["date"], start=w["start"], end=w["end"], mode=w["mode"])
             for w in raw["schedule"] or []
@@ -193,6 +208,9 @@ PLANNING_ISSUE_TITLE = "📅 Bot Midrag : le planning arrive à sa fin"
 
 CONFIG_PAGE = "https://rnab26.github.io/Midrag/"
 
+# Même tag pour tout ce qui concerne le token : une alerte remplace la précédente.
+PUSH_TAG_TOKEN = "midrag-token"
+
 GITHUB_API = "https://api.github.com"
 
 
@@ -227,23 +245,25 @@ def _find_open_issue(
     return None
 
 
-def _open_issue_once(title: str, body: str, kind: str) -> None:
+def _open_issue_once(title: str, body: str, kind: str) -> bool:
     """Ouvre l'issue si aucune du même titre n'est déjà ouverte.
 
     Volontairement silencieux quand elle existe déjà : un commentaire par run
-    rejouerait exactement le flot de notifications qu'on cherche à supprimer."""
+    rejouerait exactement le flot de notifications qu'on cherche à supprimer.
+
+    Renvoie True seulement si l'issue vient d'être créée."""
     ctx = _github_session()
     if ctx is None:
         print(
             f"GITHUB_TOKEN/GITHUB_REPOSITORY absents : pas d'{kind} ouverte.",
             file=sys.stderr,
         )
-        return
+        return False
     session, repo = ctx
     try:
         if _find_open_issue(session, repo, title) is not None:
             print(f"{kind.capitalize()} déjà ouverte, rien à signaler de plus.")
-            return
+            return False
         resp = session.post(
             f"{GITHUB_API}/repos/{repo}/issues",
             json={"title": title, "body": body},
@@ -251,8 +271,10 @@ def _open_issue_once(title: str, body: str, kind: str) -> None:
         )
         resp.raise_for_status()
         print(f"{kind.capitalize()} ouverte : {resp.json()['html_url']}")
+        return True
     except Exception as exc:  # noqa: BLE001 - best effort, ne doit jamais casser le run
         print(f"Impossible d'ouvrir l'{kind} : {exc}", file=sys.stderr)
+        return False
 
 
 def _close_issue(title: str, comment: str, kind: str) -> None:
@@ -297,7 +319,8 @@ def report_failure(reason: str, detail: str = "") -> None:
     )
     if detail:
         body += f"\n<details><summary>Détail technique</summary>\n\n```\n{detail}\n```\n</details>\n"
-    _open_issue_once(ISSUE_TITLE, body, "issue de suivi")
+    if _open_issue_once(ISSUE_TITLE, body, "issue de suivi"):
+        send_push("⚠️ Bot Midrag bloqué", reason[:160], tag=PUSH_TAG_TOKEN)
 
 
 def clear_failure() -> None:
@@ -328,6 +351,31 @@ def warn_expiry(expiry: datetime, tz: ZoneInfo, alert_days: int) -> None:
         "configuration.\n"
     )
     _open_issue_once(EXPIRY_ISSUE_TITLE, body, "issue d'avertissement")
+
+
+def expiry_push_text(expiry: datetime, now_utc: datetime, tz: ZoneInfo) -> tuple[str, str]:
+    """Titre et corps de la notification de rappel du token."""
+    remaining = expiry - now_utc
+    if remaining.total_seconds() <= 0:
+        return (
+            "⛔ Token Midrag expiré",
+            "Ta disponibilité n'est plus maintenue. Touche pour le renouveler (SMS + code).",
+        )
+    hours = remaining.total_seconds() / 3600
+    when = f"{expiry.astimezone(tz):%d/%m à %H:%M}"
+    delay = "dans moins de 24 h" if hours < 24 else f"dans {int(hours // 24)} jours"
+    return (
+        "🔑 Token Midrag à renouveler",
+        f"Il expire le {when}, soit {delay}. Touche pour le renouveler (SMS + code).",
+    )
+
+
+def remind_expiry(expiry: datetime, now: datetime, tz: ZoneInfo, notify_hour: int) -> None:
+    """Envoie le rappel push du jour, si on est dans la fenêtre de l'heure choisie."""
+    if not (now.hour == notify_hour and now.minute < REMINDER_WINDOW_MINUTES):
+        return
+    title, body = expiry_push_text(expiry, datetime.now(timezone.utc), tz)
+    send_push(title, body, tag=PUSH_TAG_TOKEN)
 
 
 def clear_expiry_warning(comment: str) -> None:
@@ -396,6 +444,15 @@ def check_planning(windows: list[Window], now: datetime, alert_days: int, tz: Zo
 
 
 def main() -> int:
+    if os.environ.get("TEST_PUSH") == "true":
+        # Lancé depuis le bouton « Envoyer une notification test » de la page.
+        ok = send_push(
+            "✅ Notifications Midrag actives",
+            "Tu recevras ici les rappels de renouvellement du token.",
+            tag="midrag-test",
+        )
+        return 0 if ok else 1
+
     token = os.environ.get("MIDRAG_TOKEN")
     if not token:
         report_failure("Le secret `MIDRAG_TOKEN` est absent de l'environnement du workflow.")
@@ -419,9 +476,11 @@ def main() -> int:
             clear_expiry_warning(
                 "⛔ Le token a expiré — le suivi continue dans l'issue de panne."
             )
+            remind_expiry(expiry, now, tz, cfg.notify_hour)
             return 0
         if remaining.total_seconds() <= alert_days * 86400:
             warn_expiry(expiry, tz, alert_days)
+            remind_expiry(expiry, now, tz, cfg.notify_hour)
         else:
             clear_expiry_warning("✅ Token renouvelé, l'échéance est repoussée.")
 
