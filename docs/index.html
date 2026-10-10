@@ -239,22 +239,44 @@
 
 <div class="card" id="token-card" style="display:none;">
   <h2>Renouveler le token Midrag</h2>
-  <div class="hint" style="margin-top:0;">Le token Midrag dure quelques semaines. Quand il expire, le bot s'arrête de lui-même et ouvre une alerte. Colle ici le token frais : il est chiffré dans ce navigateur puis envoyé directement dans le secret GitHub — il n'est jamais écrit dans le repo, ni conservé sur cette page.</div>
-  <label for="midrag-token">Nouveau token Midrag</label>
-  <div class="pat-row">
-    <input type="password" id="midrag-token" placeholder="eyJhbGciOi..." autocomplete="off">
-    <button type="button" class="pat-btn" id="midrag-token-toggle" title="Afficher/masquer">👁</button>
+
+  <div id="renew-setup" style="display:none;">
+    <div class="hint" style="margin-top:0;">À faire <strong>une seule fois</strong>. Tes identifiants Midrag sont rangés dans les secrets chiffrés du repo (jamais dans le code). Le jeton GitHub de cette page y est copié aussi, pour que le renouvellement puisse s'écrire tout seul.</div>
+    <label for="renew-sp">Code fournisseur (קוד ספק)</label>
+    <input type="text" id="renew-sp" inputmode="numeric" autocomplete="off" placeholder="12345">
+    <label for="renew-phone">Téléphone Midrag</label>
+    <input type="text" id="renew-phone" inputmode="numeric" autocomplete="off" placeholder="0501234567">
+    <label for="renew-company">N° entreprise (עוסק/חברה)</label>
+    <input type="text" id="renew-company" inputmode="numeric" autocomplete="off">
+    <button class="btn-primary" id="renew-activate-btn">Activer le renouvellement</button>
   </div>
-  <div class="hint" id="midrag-token-preview"></div>
-  <button class="btn-primary" id="save-token-btn">Enregistrer le token et tester</button>
-  <div class="hint" style="margin-top:10px;">Pas de token sous la main ? <a href="token.html">Récupérer un token depuis ton téléphone</a> — sans outils développeur.</div>
-  <details>
-    <summary>Où trouver ce token ?</summary>
-    <p>Le plus simple, surtout au téléphone : <a href="token.html">la page de récupération</a>. Elle installe un favori qui rejoue la connexion Midrag (identifiants + code reçu par SMS) directement dans le site, et t'affiche le token.</p>
-    <p>À la main : connecte-toi sur <strong>bizn.midrag.co.il</strong> (téléphone + n° d'entreprise + code SMS) avec les outils développeur ouverts (F12) → onglet <em>Network</em>, filtre <em>Fetch/XHR</em> → requête <code>Token</code> → onglet <em>Response</em> → copie la valeur de <code>data.token</code> (elle commence par <code>eyJ</code>). Procédure détaillée dans le README.</p>
-    <p>Le jeton GitHub ci-dessus doit avoir la permission <strong>Secrets: Read and write</strong> pour que ce bouton fonctionne, et <strong>Issues: Read and write</strong> + <strong>Actions: Read and write</strong> pour l'état ci-dessus.</p>
-  </details>
+
+  <div id="renew-start" style="display:none;">
+    <div class="hint" style="margin-top:0;">Le token dure environ un mois. Touche le bouton : Midrag t'envoie un code par SMS, tu le tapes ici, c'est fini.</div>
+    <button class="btn-primary" id="renew-send-btn">Renouveler le token</button>
+    <button class="btn-secondary" id="renew-edit-btn" style="margin-top:8px;">Modifier mes identifiants</button>
+  </div>
+
+  <div id="renew-code" style="display:none;">
+    <label for="renew-code-input">Code reçu par SMS (6 chiffres)</label>
+    <input type="text" id="renew-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+    <button class="btn-primary" id="renew-verify-btn">Valider le code</button>
+    <button class="btn-secondary" id="renew-resend-btn" style="margin-top:8px;">Recevoir un nouveau code</button>
+  </div>
+
   <div class="status" id="token-status"></div>
+
+  <details>
+    <summary>Ça ne marche pas ? Coller un token à la main</summary>
+    <label for="midrag-token">Token Midrag (commence par eyJ)</label>
+    <div class="pat-row">
+      <input type="password" id="midrag-token" placeholder="eyJhbGciOi..." autocomplete="off">
+      <button type="button" class="pat-btn" id="midrag-token-toggle" title="Afficher/masquer">👁</button>
+    </div>
+    <div class="hint" id="midrag-token-preview"></div>
+    <button class="btn-secondary" id="save-token-btn">Enregistrer ce token et tester</button>
+    <div class="hint">Pour obtenir ce token autrement : <a href="token.html">page de récupération</a>.</div>
+  </details>
 </div>
 
 <div class="card" id="schedule-card" style="display:none;">
@@ -667,6 +689,7 @@ async function loadAll() {
     parseCadence(wf.content);
     $("schedule-card").style.display = "block";
     $("token-card").style.display = "block";
+    renewInit();
     setStatus("ok", "Planning actuel chargé.");
     refreshState();
     localStorage.setItem("midrag_pat", $("pat").value.trim());
@@ -787,6 +810,7 @@ function renderTokenExpiry() {
 
 async function refreshState() {
   $("state-card").style.display = "block";
+  await syncTokenExpiry();
   renderTokenExpiry();
 
   try {
@@ -821,7 +845,7 @@ async function refreshState() {
     if (alert) {
       banner.style.display = "block";
       banner.innerHTML = "⚠️ <strong>Le bot ne maintient plus ta disponibilité.</strong> " +
-        `Renouvelle le token ci-dessous. <a href="${alert.html_url}" target="_blank" rel="noopener">Voir le détail</a>`;
+        `Touche « Renouveler le token » ci-dessous. <a href="${alert.html_url}" target="_blank" rel="noopener">Voir le détail</a>`;
     } else {
       banner.style.display = "none";
     }
@@ -864,6 +888,37 @@ function setTokenStatus(kind, msg) {
   el.textContent = msg;
 }
 
+async function putSecret(name, value) {
+  const s = await ensureSodium();
+  const keyRes = await fetch(`${apiBase()}/actions/secrets/public-key`, { headers: ghHeaders() });
+  if (keyRes.status === 401) {
+    throw new Error("GitHub a refusé le jeton (401) : il est invalide, révoqué ou expiré. Vérifie le champ « Jeton d'accès GitHub » de la carte « Connexion » (👁 pour l'afficher) — il doit commencer par github_pat_.");
+  }
+  if (keyRes.status === 403 || keyRes.status === 404) {
+    throw new Error("Le jeton GitHub n'a pas la permission « Secrets: Read and write » — ajoute-la au jeton (Settings → Developer settings → Fine-grained tokens → ton jeton → Repository permissions → Secrets → Read and write → Update token), puis réessaie.");
+  }
+  if (!keyRes.ok) throw new Error(`Clé publique du repo illisible (${keyRes.status})`);
+  const { key, key_id } = await keyRes.json();
+
+  const sealed = s.crypto_box_seal(
+    s.from_string(value),
+    s.from_base64(key, s.base64_variants.ORIGINAL)
+  );
+  const putRes = await fetch(`${apiBase()}/actions/secrets/${name}`, {
+    method: "PUT",
+    headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      encrypted_value: s.to_base64(sealed, s.base64_variants.ORIGINAL),
+      key_id,
+    }),
+  });
+  if (!putRes.ok) {
+    throw new Error(putRes.status === 403 || putRes.status === 404
+      ? "Écriture du secret refusée : le jeton GitHub peut lire les secrets mais pas les écrire — mets la permission « Secrets » sur Read and write."
+      : `Écriture du secret refusée (${putRes.status})`);
+  }
+}
+
 async function saveMidragToken() {
   const token = $("midrag-token").value.trim();
   if (!token) {
@@ -889,34 +944,7 @@ async function saveMidragToken() {
   $("save-token-btn").disabled = true;
   setTokenStatus("pending", "Chiffrement et envoi…");
   try {
-    const s = await ensureSodium();
-    const keyRes = await fetch(`${apiBase()}/actions/secrets/public-key`, { headers: ghHeaders() });
-    if (keyRes.status === 401) {
-      throw new Error("GitHub a refusé le jeton (401) : il est invalide, révoqué ou expiré. Vérifie le champ « Jeton d'accès GitHub » de la carte « Connexion » (👁 pour l'afficher) — il doit commencer par github_pat_.");
-    }
-    if (keyRes.status === 403 || keyRes.status === 404) {
-      throw new Error("Le jeton GitHub n'a pas la permission « Secrets: Read and write » — ajoute-la au jeton (Settings → Developer settings → Fine-grained tokens → ton jeton → Repository permissions → Secrets → Read and write → Update token), puis réessaie.");
-    }
-    if (!keyRes.ok) throw new Error(`Clé publique du repo illisible (${keyRes.status})`);
-    const { key, key_id } = await keyRes.json();
-
-    const sealed = s.crypto_box_seal(
-      s.from_string(token),
-      s.from_base64(key, s.base64_variants.ORIGINAL)
-    );
-    const putRes = await fetch(`${apiBase()}/actions/secrets/MIDRAG_TOKEN`, {
-      method: "PUT",
-      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        encrypted_value: s.to_base64(sealed, s.base64_variants.ORIGINAL),
-        key_id,
-      }),
-    });
-    if (!putRes.ok) {
-      throw new Error(putRes.status === 403 || putRes.status === 404
-        ? "Écriture du secret refusée : le jeton GitHub peut lire les secrets mais pas les écrire — mets la permission « Secrets » sur Read and write."
-        : `Écriture du secret refusée (${putRes.status})`);
-    }
+    await putSecret("MIDRAG_TOKEN", token);
 
     // Seule la date d'expiration est conservée ici, jamais le token lui-même.
     localStorage.setItem("midrag_token_exp", exp.toISOString());
@@ -943,6 +971,182 @@ async function saveMidragToken() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Renouvellement en un tap. Midrag exige un code SMS à chaque connexion, mais
+// les 3 appels de connexion peuvent être faits par GitHub Actions (pas de CORS
+// côté serveur) : le workflow midrag-renew.yml envoie le SMS (étape send),
+// puis échange le code que tu tapes ici contre un token (étape verify).
+// Voir midrag_bot/renew.py.
+// ---------------------------------------------------------------------------
+const RENEW_WORKFLOW = "midrag-renew.yml";
+const RENEW_SETUP_SECRETS = ["MIDRAG_SP_ID", "MIDRAG_PHONE", "MIDRAG_COMPANY", "RENEW_GH_TOKEN"];
+const STATUS_PATH = "midrag_bot/token_status.json";
+const RENEW_TIMEOUT_MS = 150000;
+const RENEW_POLL_MS = 4000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function showRenewStep(step) {
+  for (const name of ["setup", "start", "code"]) {
+    $("renew-" + name).style.display = name === step ? "block" : "none";
+  }
+}
+
+function setTokenStatusLink(kind, msg, url) {
+  setTokenStatus(kind, msg + " ");
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Voir le détail";
+  $("token-status").appendChild(a);
+}
+
+async function secretExists(name) {
+  const res = await fetch(`${apiBase()}/actions/secrets/${name}`, { headers: ghHeaders(), cache: "no-store" });
+  if (res.status === 200) return true;
+  if (res.status === 404) return false;
+  throw new Error(`${res.status}`);
+}
+
+// Choisit l'étape à afficher : réglage initial, renouvellement, ou — si la page
+// a été quittée entre l'envoi du SMS et la saisie du code (aller lire ses SMS
+// recharge souvent la page sur téléphone) — saisie du code.
+async function renewInit() {
+  try {
+    const ready = (await Promise.all(RENEW_SETUP_SECRETS.map(secretExists))).every(Boolean);
+    if (!ready) { showRenewStep("setup"); return; }
+    showRenewStep((await secretExists("MIDRAG_PENDING")) ? "code" : "start");
+  } catch (e) {
+    showRenewStep("setup");
+    setTokenStatus("err", "Impossible de lire les secrets du repo : le jeton GitHub a besoin de la permission « Secrets: Read and write ».");
+  }
+}
+
+async function renewActivate() {
+  const spId = $("renew-sp").value.replace(/\D/g, "");
+  const phone = $("renew-phone").value.replace(/[-\s]/g, "");
+  const company = $("renew-company").value.trim();
+  if (!spId || !phone || !company) { setTokenStatus("err", "Remplis les trois champs."); return; }
+  if (!/^05\d{8}$/.test(phone)) { setTokenStatus("err", "Le téléphone doit faire 10 chiffres et commencer par 05."); return; }
+  const patIssue = patProblem();
+  if (patIssue) { setTokenStatus("err", patIssue); return; }
+
+  $("renew-activate-btn").disabled = true;
+  setTokenStatus("pending", "Enregistrement chiffré…");
+  try {
+    await putSecret("MIDRAG_SP_ID", spId);
+    await putSecret("MIDRAG_PHONE", phone);
+    await putSecret("MIDRAG_COMPANY", company);
+    await putSecret("RENEW_GH_TOKEN", $("pat").value.trim());
+    for (const id of ["renew-sp", "renew-phone", "renew-company"]) $(id).value = "";
+    showRenewStep("start");
+    setTokenStatus("ok", "Renouvellement activé ✔ — touche « Renouveler le token » quand tu veux.");
+  } catch (e) {
+    setTokenStatus("err", e.message);
+  } finally {
+    $("renew-activate-btn").disabled = false;
+  }
+}
+
+async function latestRenewRunId() {
+  const res = await fetch(`${apiBase()}/actions/workflows/${RENEW_WORKFLOW}/runs?per_page=1&_=${Date.now()}`,
+                          { headers: ghHeaders(), cache: "no-store" });
+  if (res.status === 404) throw new Error("Le renouvellement n'est pas encore installé sur la branche (la mise à jour du bot doit d'abord être fusionnée).");
+  if (!res.ok) throw new Error(`Lecture des exécutions refusée (${res.status}) — le jeton GitHub a besoin de « Actions: Read and write ».`);
+  const runs = (await res.json()).workflow_runs;
+  return runs.length ? runs[0].id : 0;
+}
+
+// Lance une étape et attend sa fin. On repère notre exécution par son numéro
+// (plus grand que la dernière avant le lancement), pas par l'heure : l'horloge
+// du téléphone et celle de GitHub peuvent différer.
+async function renewDispatch(step) {
+  const before = await latestRenewRunId();
+  const res = await fetch(`${apiBase()}/actions/workflows/${RENEW_WORKFLOW}/dispatches`, {
+    method: "POST",
+    headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+    body: JSON.stringify({ ref: $("branch").value.trim(), inputs: { step } }),
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 404
+      ? "Le renouvellement n'est pas encore installé sur la branche (la mise à jour du bot doit d'abord être fusionnée)."
+      : `Déclenchement refusé (${res.status}) — le jeton GitHub a besoin de « Actions: Read and write ».`);
+  }
+  const deadline = Date.now() + RENEW_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(RENEW_POLL_MS);
+    const r = await fetch(`${apiBase()}/actions/workflows/${RENEW_WORKFLOW}/runs?per_page=5&_=${Date.now()}`,
+                          { headers: ghHeaders(), cache: "no-store" });
+    if (!r.ok) continue;
+    const run = (await r.json()).workflow_runs.find((x) => x.id > before);
+    if (run && run.status === "completed") return run;
+  }
+  throw new Error("GitHub n'a pas répondu en 2 min 30. Réessaie dans un instant (onglet Actions du repo pour voir où ça en est).");
+}
+
+function setRenewBusy(busy) {
+  for (const id of ["renew-send-btn", "renew-verify-btn", "renew-resend-btn", "renew-edit-btn"]) $(id).disabled = busy;
+}
+
+async function renewSend() {
+  setRenewBusy(true);
+  setTokenStatus("pending", "Envoi du code par SMS… (environ 30 s)");
+  try {
+    const run = await renewDispatch("send");
+    if (run.conclusion !== "success") {
+      setTokenStatusLink("err", "Midrag n'a pas envoyé le code (identifiants refusés ou site indisponible).", run.html_url);
+      return;
+    }
+    showRenewStep("code");
+    setTokenStatus("ok", "Code envoyé ✔ — tape les 6 chiffres reçus par SMS.");
+    $("renew-code-input").focus();
+  } catch (e) {
+    setTokenStatus("err", e.message);
+  } finally {
+    setRenewBusy(false);
+  }
+}
+
+// La date d'expiration (jamais le token) est publiée par renew.py dans
+// token_status.json : elle se lit depuis n'importe quel appareil. On garde la
+// plus lointaine des deux (un token collé à la main est plus récent que le fichier).
+async function syncTokenExpiry() {
+  try {
+    const file = JSON.parse((await ghGet(STATUS_PATH)).content);
+    const remote = new Date(file.expires_at);
+    const local = new Date(localStorage.getItem("midrag_token_exp") || 0);
+    if (!isNaN(remote) && !(remote <= local)) localStorage.setItem("midrag_token_exp", remote.toISOString());
+  } catch (e) { /* pas encore de fichier : on garde la valeur locale */ }
+}
+
+async function renewVerify() {
+  const code = $("renew-code-input").value.trim();
+  if (!/^\d{6}$/.test(code)) { setTokenStatus("err", "Le code fait 6 chiffres."); return; }
+  setRenewBusy(true);
+  setTokenStatus("pending", "Vérification du code… (environ 30 s)");
+  try {
+    await putSecret("MIDRAG_SMS_CODE", code);
+    const run = await renewDispatch("verify");
+    if (run.conclusion !== "success") {
+      setTokenStatusLink("err", "Code refusé ou expiré. Redemande un code avec le bouton ci-dessous.", run.html_url);
+      return;
+    }
+    $("renew-code-input").value = "";
+    showRenewStep("start");
+    await syncTokenExpiry();
+    renderTokenExpiry();
+    setTokenStatus("ok", "Token renouvelé ✔ — test du bot en cours…");
+    const test = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
+      method: "POST",
+      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+      body: JSON.stringify({ ref: $("branch").value.trim() }),
+    });
+    if (test.ok) setTimeout(refreshState, 25000);
+    setTokenStatus("ok", "Token renouvelé ✔" + (test.ok ? " — test du bot lancé, l'état se met à jour dans ~30 s." : ""));
+  } catch (e) {
+    setTokenStatus("err", e.message);
+  } finally {
+    setRenewBusy(false);
+  }
+}
+
 appendDates(INITIAL_DAYS);
 
 const savedPat = localStorage.getItem("midrag_pat");
@@ -964,6 +1168,11 @@ $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
 $("refresh-state-btn").addEventListener("click", refreshState);
 $("save-token-btn").addEventListener("click", saveMidragToken);
+$("renew-activate-btn").addEventListener("click", renewActivate);
+$("renew-send-btn").addEventListener("click", renewSend);
+$("renew-resend-btn").addEventListener("click", renewSend);
+$("renew-verify-btn").addEventListener("click", renewVerify);
+$("renew-edit-btn").addEventListener("click", () => showRenewStep("setup"));
 
 $("midrag-token-toggle").addEventListener("click", () => {
   const f = $("midrag-token");

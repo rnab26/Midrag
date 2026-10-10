@@ -26,6 +26,7 @@ import base64
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -136,6 +137,36 @@ def set_slider_status(token: str, sector_id: int, level: int) -> dict:
     if body.get("isBusinessLogicError"):
         raise RuntimeError(f"Midrag a refusé la mise à jour: {body}")
     return body
+
+
+# Un échec isolé (timeout, 5xx) ne doit pas laisser passer un quart d'heure
+# sans ping : le « disponible maintenant » expire au bout d'1 h.
+RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 5
+
+
+def set_slider_status_with_retry(token: str, sector_id: int, level: int) -> dict:
+    """Réessaie sur erreur transitoire (réseau, 5xx). Un 4xx (token rejeté)
+    ou un refus métier est définitif : on ne réessaie pas."""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            return set_slider_status(token, sector_id, level)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            error: Exception = exc
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else 0
+            if status < 500:
+                raise
+            error = exc
+        if attempt == RETRY_ATTEMPTS:
+            raise error
+        print(
+            f"Tentative {attempt}/{RETRY_ATTEMPTS} échouée ({error}), nouvel essai "
+            f"dans {RETRY_DELAY_SECONDS} s.",
+            file=sys.stderr,
+        )
+        time.sleep(RETRY_DELAY_SECONDS)
+    raise AssertionError("inatteignable")
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +439,7 @@ def main() -> int:
 
     level = MODE_TO_LEVEL[active.mode]
     try:
-        result = set_slider_status(token, sector_id, level)
+        result = set_slider_status_with_retry(token, sector_id, level)
         current_level = result["data"]["currentLevel"]
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else None

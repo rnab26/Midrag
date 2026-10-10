@@ -1,0 +1,49 @@
+name: Midrag - renouvellement du token
+
+# Lancé uniquement depuis la page de configuration (bouton « Renouveler »),
+# en deux temps : `send` envoie le SMS, `verify` échange le code reçu contre
+# un token. Voir midrag_bot/renew.py.
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "send = envoyer le code SMS, verify = valider le code"
+        required: true
+        type: choice
+        options:
+          - send
+          - verify
+
+permissions:
+  contents: read
+
+# Un renouvellement à la fois, sans jamais annuler celui en cours : couper un
+# `verify` en route perdrait le code, déjà consommé côté Midrag.
+concurrency:
+  group: midrag-renew
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install -r midrag_bot/requirements.txt
+
+      - name: Renouveler
+        env:
+          STEP: ${{ inputs.step }}
+          MIDRAG_SP_ID: ${{ secrets.MIDRAG_SP_ID }}
+          MIDRAG_PHONE: ${{ secrets.MIDRAG_PHONE }}
+          MIDRAG_COMPANY: ${{ secrets.MIDRAG_COMPANY }}
+          MIDRAG_PENDING: ${{ secrets.MIDRAG_PENDING }}
+          MIDRAG_SMS_CODE: ${{ secrets.MIDRAG_SMS_CODE }}
+          RENEW_GH_TOKEN: ${{ secrets.RENEW_GH_TOKEN }}
+        run: python midrag_bot/renew.py "$STEP"
