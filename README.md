@@ -58,6 +58,14 @@ main possible : `Settings` → `Secrets and variables` → `Actions` → secret
 
 ### 3. Planning — page de configuration
 
+La page principale ne montre que le calendrier : un bloc par jour, avec ses
+créneaux côte à côte (une couleur par mode) et un bouton « + Créneau ».
+Tout le reste est dans le menu ☰ : État du bot, Renouveler le token,
+Notifications, Réglages (fréquence, alertes, heure du rappel, secteur),
+Connexion. La pastille en haut (« ✔ Bot actif », « 🔑 Token à renouveler »,
+« ⚠️ Bot bloqué ») donne l'état d'un coup d'œil ; toucher la pastille ouvre
+« État du bot ».
+
 Une page dédiée (`docs/index.html`, hébergée via GitHub Pages) permet de
 régler le planning — jour par jour, par vraies dates (aujourd'hui,
 demain, etc., calées sur le fuseau Asia/Jerusalem) — et la cadence de
