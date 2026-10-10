@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Midrag — planning de disponibilité</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#a3134f">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root {
     --bg: #f5f5f7;
@@ -199,6 +203,7 @@
 
 <h1>📅 Midrag — planning de disponibilité</h1>
 <div class="sub">Configure quand le bot doit te maintenir "disponible" automatiquement, jour par jour.</div>
+<button class="btn-secondary" id="install-btn" style="display:none;margin-bottom:16px;">📲 Installer l'application</button>
 
 <div class="card" id="auth-card">
   <h2>Connexion</h2>
@@ -218,7 +223,7 @@
   <button class="btn-primary" id="connect-btn">Se connecter et charger</button>
   <button class="btn-secondary" id="diag-btn" style="margin-top:8px;">Diagnostiquer le jeton</button>
   <div id="pat-diag" style="display:none;margin-top:10px;font-size:0.85rem;line-height:1.5;"></div>
-  <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com. Ce n'est pas le token Midrag : celui-là se colle plus bas, dans « Renouveler le token Midrag ».</div>
+  <div class="hint">Le jeton reste uniquement stocké dans ce navigateur (localStorage), jamais envoyé ailleurs qu'à api.github.com. Ce n'est pas le token Midrag : celui-là se renouvelle par SMS, plus bas.</div>
   <details>
     <summary>Comment créer ce jeton ?</summary>
     <p>GitHub → ton avatar → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</p>
@@ -266,17 +271,20 @@
 
   <div class="status" id="token-status"></div>
 
-  <details>
-    <summary>Ça ne marche pas ? Coller un token à la main</summary>
-    <label for="midrag-token">Token Midrag (commence par eyJ)</label>
-    <div class="pat-row">
-      <input type="password" id="midrag-token" placeholder="eyJhbGciOi..." autocomplete="off">
-      <button type="button" class="pat-btn" id="midrag-token-toggle" title="Afficher/masquer">👁</button>
-    </div>
-    <div class="hint" id="midrag-token-preview"></div>
-    <button class="btn-secondary" id="save-token-btn">Enregistrer ce token et tester</button>
-    <div class="hint">Pour obtenir ce token autrement : <a href="token.html">page de récupération</a>.</div>
-  </details>
+</div>
+
+<div class="card" id="notify-card" style="display:none;">
+  <h2>Notifications sur ce téléphone</h2>
+  <div class="hint" style="margin-top:0;">Reçois une notification quand le token Midrag doit être renouvelé (une par jour, à l'heure réglée plus bas, pendant les jours qui précèdent l'expiration) ou quand le bot est bloqué. Un seul appareil à la fois : le dernier sur lequel tu les actives.</div>
+  <div id="notify-off" style="display:none;">
+    <button class="btn-primary" id="notify-enable-btn">Activer les notifications</button>
+  </div>
+  <div id="notify-on" style="display:none;">
+    <button class="btn-secondary" id="notify-test-btn">Envoyer une notification test</button>
+    <button class="btn-secondary" id="notify-disable-btn" style="margin-top:8px;">Désactiver</button>
+  </div>
+  <div class="hint" id="install-hint" style="display:none;">Pour des notifications fiables, installe l'application : menu Chrome ⋮ → « Installer l'application ».</div>
+  <div class="status" id="notify-status"></div>
 </div>
 
 <div class="card" id="schedule-card" style="display:none;">
@@ -308,7 +316,29 @@
     <option value="5">5 jours avant</option>
     <option value="7">7 jours avant</option>
   </select>
-  <div class="hint">À partir de ce délai, le bot ouvre une issue d'avertissement — une seule, refermée toute seule dès que le token est renouvelé. Sans ça, tu n'es prévenu qu'une fois la disponibilité déjà tombée.</div>
+  <div class="hint">À partir de ce délai, le bot t'envoie une notification par jour et ouvre une issue d'avertissement — une seule, refermée toute seule dès que le token est renouvelé. Sans ça, tu n'es prévenu qu'une fois la disponibilité déjà tombée.</div>
+
+  <label for="notify-hour">Heure de la notification de rappel</label>
+  <select id="notify-hour">
+    <option value="6">06h00</option>
+    <option value="7">07h00</option>
+    <option value="8">08h00</option>
+    <option value="9" selected>09h00</option>
+    <option value="10">10h00</option>
+    <option value="11">11h00</option>
+    <option value="12">12h00</option>
+    <option value="13">13h00</option>
+    <option value="14">14h00</option>
+    <option value="15">15h00</option>
+    <option value="16">16h00</option>
+    <option value="17">17h00</option>
+    <option value="18">18h00</option>
+    <option value="19">19h00</option>
+    <option value="20">20h00</option>
+    <option value="21">21h00</option>
+    <option value="22">22h00</option>
+  </select>
+  <div class="hint">Heure d'Israël. La notification ne part que si tu as activé les notifications plus haut.</div>
 
   <label for="planning-alert-days">Prévenir avant la fin du planning</label>
   <select id="planning-alert-days">
@@ -339,6 +369,7 @@ const MODES = [
 const CONFIG_PATH = "midrag_bot/config.yaml";
 const DEFAULT_ALERT_DAYS = "3";
 const DEFAULT_PLANNING_ALERT_DAYS = "2";
+const DEFAULT_NOTIFY_HOUR = "9";
 const WORKFLOW_PATH = ".github/workflows/midrag-availability.yml";
 const INITIAL_DAYS = 14;
 const EXTEND_DAYS = 7;
@@ -513,6 +544,11 @@ function parseConfig(yamlText) {
     ? alertMatch[1]
     : DEFAULT_ALERT_DAYS;
 
+  const notifyMatch = yamlText.match(/notify_hour:\s*(\d+)/);
+  $("notify-hour").value = notifyMatch && $("notify-hour").querySelector(`option[value="${notifyMatch[1]}"]`)
+    ? notifyMatch[1]
+    : DEFAULT_NOTIFY_HOUR;
+
   const planningMatch = yamlText.match(/planning_alert_days:\s*(\d+)/);
   $("planning-alert-days").value = planningMatch && $("planning-alert-days").querySelector(`option[value="${planningMatch[1]}"]`)
     ? planningMatch[1]
@@ -571,6 +607,10 @@ function buildConfigYaml() {
     "# d'avertissement est ouverte (réglable depuis la page de configuration).",
     `token_alert_days: ${$("alert-days").value || DEFAULT_ALERT_DAYS}`,
     "",
+    "# Heure (Asia/Jerusalem) de la notification quotidienne de rappel du token",
+    "# (réglable depuis la page de configuration).",
+    `notify_hour: ${$("notify-hour").value || DEFAULT_NOTIFY_HOUR}`,
+    "",
     "# Combien de jours avant la fin du planning une issue d'avertissement est",
     "# ouverte (réglable depuis la page de configuration).",
     `planning_alert_days: ${$("planning-alert-days").value || DEFAULT_PLANNING_ALERT_DAYS}`,
@@ -604,7 +644,7 @@ function buildConfigYaml() {
 const looksLikeJwt = (v) => /^eyJ[\w-]*\./.test(v);
 const looksLikeGithubToken = (v) => /^(github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)/.test(v);
 
-const PAT_IS_MIDRAG = "Le champ « Jeton d'accès GitHub » contient un token Midrag (eyJ…). Remets-y ton jeton GitHub (github_pat_…) — le token Midrag se colle plus bas, dans « Renouveler le token Midrag ».";
+const PAT_IS_MIDRAG = "Le champ « Jeton d'accès GitHub » contient un token Midrag (eyJ…). Remets-y ton jeton GitHub (github_pat_…) — le token Midrag ne se colle nulle part : il se renouvelle par SMS, plus bas.";
 
 function patProblem() {
   const value = $("pat").value.trim();
@@ -690,6 +730,7 @@ async function loadAll() {
     $("schedule-card").style.display = "block";
     $("token-card").style.display = "block";
     renewInit();
+    notifyInit();
     setStatus("ok", "Planning actuel chargé.");
     refreshState();
     localStorage.setItem("midrag_pat", $("pat").value.trim());
@@ -757,16 +798,6 @@ function ghHeaders() {
     Authorization: `Bearer ${$("pat").value.trim()}`,
     Accept: "application/vnd.github+json",
   };
-}
-
-function decodeJwtExpiry(token) {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    if (!payload.exp) return null;
-    return new Date(payload.exp * 1000);
-  } catch (e) {
-    return null;
-  }
 }
 
 function formatDateTime(d) {
@@ -916,58 +947,6 @@ async function putSecret(name, value) {
     throw new Error(putRes.status === 403 || putRes.status === 404
       ? "Écriture du secret refusée : le jeton GitHub peut lire les secrets mais pas les écrire — mets la permission « Secrets » sur Read and write."
       : `Écriture du secret refusée (${putRes.status})`);
-  }
-}
-
-async function saveMidragToken() {
-  const token = $("midrag-token").value.trim();
-  if (!token) {
-    setTokenStatus("err", "Colle d'abord le token Midrag.");
-    return;
-  }
-  if (looksLikeGithubToken(token)) {
-    setTokenStatus("err", "Ça, c'est ton jeton GitHub — il va dans la carte « Connexion », tout en haut. Ici on attend le token Midrag (il commence par eyJ).");
-    return;
-  }
-  const patIssue = patProblem();
-  if (patIssue) { setTokenStatus("err", patIssue); return; }
-  const exp = decodeJwtExpiry(token);
-  if (!exp) {
-    setTokenStatus("err", "Ce texte n'est pas un token Midrag valide (impossible d'y lire une date d'expiration).");
-    return;
-  }
-  if (exp.getTime() <= Date.now()) {
-    setTokenStatus("err", `Ce token est déjà expiré (${formatDateTime(exp)}). Reconnecte-toi à Midrag pour en obtenir un neuf.`);
-    return;
-  }
-
-  $("save-token-btn").disabled = true;
-  setTokenStatus("pending", "Chiffrement et envoi…");
-  try {
-    await putSecret("MIDRAG_TOKEN", token);
-
-    // Seule la date d'expiration est conservée ici, jamais le token lui-même.
-    localStorage.setItem("midrag_token_exp", exp.toISOString());
-    $("midrag-token").value = "";
-    $("midrag-token-preview").textContent = "";
-    renderTokenExpiry();
-
-    setTokenStatus("pending", "Token enregistré ✔ — exécution de test en cours…");
-    const runRes = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
-      method: "POST",
-      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
-      body: JSON.stringify({ ref: $("branch").value.trim() }),
-    });
-    if (!runRes.ok) {
-      setTokenStatus("ok", `Token enregistré ✔ (valide jusqu'au ${formatDateTime(exp)}). Le test automatique n'a pas pu être lancé — le bot reprendra de lui-même au prochain quart d'heure.`);
-      return;
-    }
-    setTimeout(refreshState, 25000);
-    setTokenStatus("ok", `Token enregistré ✔ (valide jusqu'au ${formatDateTime(exp)}). Test lancé — l'état se met à jour dans ~30 s.`);
-  } catch (e) {
-    setTokenStatus("err", e.message);
-  } finally {
-    $("save-token-btn").disabled = false;
   }
 }
 
@@ -1147,6 +1126,208 @@ async function renewVerify() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Application installable + notifications push.
+//
+// Le service worker (sw.js) rend la page installable et affiche les push. Les
+// clés VAPID sont créées ici, dans le navigateur, à la première activation : la
+// clé privée part directement dans un secret GitHub (jamais affichée, jamais
+// copiée à la main), la clé publique dans midrag_bot/push_public_key.txt. Le bot
+// (GitHub Actions) signe ses envois avec la privée, le téléphone les reçoit via
+// l'abonnement rangé dans le secret WEBPUSH_SUBSCRIPTION.
+// ---------------------------------------------------------------------------
+const PUSH_PUBLIC_KEY_PATH = "midrag_bot/push_public_key.txt";
+const TEST_RUN_TITLE = "Midrag - test notification";
+const TEST_TIMEOUT_MS = 100000;
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => { /* page ouverte hors HTTPS : pas d'installation */ });
+}
+
+let installEvent = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvent = e;
+  $("install-btn").style.display = "block";
+});
+window.addEventListener("appinstalled", () => {
+  installEvent = null;
+  $("install-btn").style.display = "none";
+  $("install-hint").style.display = "none";
+});
+$("install-btn").addEventListener("click", async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice;
+  installEvent = null;
+  $("install-btn").style.display = "none";
+});
+
+const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+function setNotifyStatus(kind, msg) {
+  const el = $("notify-status");
+  el.className = "status show " + kind;
+  el.textContent = msg;
+}
+
+function setNotifyStatusLink(kind, msg, url) {
+  setNotifyStatus(kind, msg + " ");
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Voir le détail";
+  $("notify-status").appendChild(a);
+}
+
+function bytesToB64u(bytes) {
+  let bin = "";
+  new Uint8Array(bytes).forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64uToBytes(str) {
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (str.length % 4)) % 4);
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+async function currentPushSubscription() {
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+async function notifyInit() {
+  $("notify-card").style.display = "block";
+  $("install-hint").style.display = isStandalone() ? "none" : "block";
+  if (!pushSupported()) {
+    $("notify-off").style.display = "none";
+    $("notify-on").style.display = "none";
+    setNotifyStatus("err", "Ce navigateur ne sait pas recevoir de notifications. Utilise Chrome sur ton téléphone.");
+    return;
+  }
+  const active = Notification.permission === "granted" && !!(await currentPushSubscription());
+  $("notify-on").style.display = active ? "block" : "none";
+  $("notify-off").style.display = active ? "none" : "block";
+}
+
+// Crée la paire de clés une seule fois (secret privé + fichier public) ; les
+// activations suivantes, depuis un autre appareil, réutilisent la même paire.
+async function ensureVapidKeys() {
+  let publicKey = null;
+  try { publicKey = (await ghGet(PUSH_PUBLIC_KEY_PATH)).content.trim(); } catch (e) { /* pas encore créée */ }
+  let hasPrivate = false;
+  try { hasPrivate = await secretExists("VAPID_PRIVATE_KEY"); } catch (e) { /* traité par putSecret */ }
+  if (publicKey && hasPrivate) return publicKey;
+
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const privateKey = (await crypto.subtle.exportKey("jwk", pair.privateKey)).d;   // 32 octets, base64url
+  publicKey = bytesToB64u(await crypto.subtle.exportKey("raw", pair.publicKey));  // 65 octets
+  await putSecret("VAPID_PRIVATE_KEY", privateKey);
+  let sha;
+  try { sha = (await ghGet(PUSH_PUBLIC_KEY_PATH)).sha; } catch (e) { /* fichier à créer */ }
+  await ghPut(PUSH_PUBLIC_KEY_PATH, publicKey + "\n", sha, "Notifications : clé publique VAPID");
+  return publicKey;
+}
+
+async function notifyEnable() {
+  $("notify-enable-btn").disabled = true;
+  setNotifyStatus("pending", "Autorisation…");
+  try {
+    const patIssue = patProblem();
+    if (patIssue) throw new Error(patIssue);
+    if (await Notification.requestPermission() !== "granted") {
+      throw new Error("Notifications refusées. Pour les autoriser : Chrome ⋮ → Paramètres → Paramètres du site → Notifications → rnab26.github.io → Autoriser, puis réessaie.");
+    }
+    setNotifyStatus("pending", "Préparation des clés…");
+    const publicKey = await ensureVapidKeys();
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // Un abonnement fait avec une autre clé publique ne serait jamais accepté.
+    if (sub && sub.options && sub.options.applicationServerKey && bytesToB64u(sub.options.applicationServerKey) !== publicKey) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(publicKey) });
+    }
+    setNotifyStatus("pending", "Enregistrement de ce téléphone…");
+    await putSecret("WEBPUSH_SUBSCRIPTION", JSON.stringify(sub.toJSON()));
+    await notifyInit();
+    setNotifyStatus("ok", "Notifications activées ✔ — touche « Envoyer une notification test » pour vérifier.");
+  } catch (e) {
+    setNotifyStatus("err", e.message);
+  } finally {
+    $("notify-enable-btn").disabled = false;
+  }
+}
+
+async function notifyDisable() {
+  if (!confirm("Désactiver les notifications sur ce téléphone ?")) return;
+  $("notify-disable-btn").disabled = true;
+  try {
+    const sub = await currentPushSubscription();
+    if (sub) await sub.unsubscribe();
+    const res = await fetch(`${apiBase()}/actions/secrets/WEBPUSH_SUBSCRIPTION`, { method: "DELETE", headers: ghHeaders() });
+    if (!res.ok && res.status !== 404) throw new Error(`Suppression de l'abonnement refusée (${res.status}).`);
+    await notifyInit();
+    setNotifyStatus("ok", "Notifications désactivées.");
+  } catch (e) {
+    setNotifyStatus("err", e.message);
+  } finally {
+    $("notify-disable-btn").disabled = false;
+  }
+}
+
+async function latestRunIdOf(workflowFile) {
+  const res = await fetch(`${apiBase()}/actions/workflows/${workflowFile}/runs?per_page=1&_=${Date.now()}`,
+                          { headers: ghHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error(`Lecture des exécutions refusée (${res.status}) — le jeton GitHub a besoin de « Actions: Read and write ».`);
+  const runs = (await res.json()).workflow_runs;
+  return runs.length ? runs[0].id : 0;
+}
+
+// Relance le bot avec test_push=true : il envoie une notification sans pinguer.
+// Son run se reconnaît à son titre (run-name du workflow), les pings normaux
+// tournant en même temps.
+async function notifyTest() {
+  $("notify-test-btn").disabled = true;
+  setNotifyStatus("pending", "Envoi de la notification test… (environ 30 s)");
+  try {
+    const before = await latestRunIdOf("midrag-availability.yml");
+    const res = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/dispatches`, {
+      method: "POST",
+      headers: Object.assign(ghHeaders(), { "Content-Type": "application/json" }),
+      body: JSON.stringify({ ref: $("branch").value.trim(), inputs: { test_push: "true" } }),
+    });
+    if (!res.ok) {
+      throw new Error(res.status === 422
+        ? "Le bot n'est pas encore à jour sur la branche (la mise à jour des notifications doit d'abord être fusionnée)."
+        : `Déclenchement refusé (${res.status}) — le jeton GitHub a besoin de « Actions: Read and write ».`);
+    }
+    const deadline = Date.now() + TEST_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await sleep(RENEW_POLL_MS);
+      const r = await fetch(`${apiBase()}/actions/workflows/midrag-availability.yml/runs?event=workflow_dispatch&per_page=10&_=${Date.now()}`,
+                            { headers: ghHeaders(), cache: "no-store" });
+      if (!r.ok) continue;
+      const run = (await r.json()).workflow_runs.find((x) => x.id > before && x.display_title === TEST_RUN_TITLE);
+      if (!run || run.status !== "completed") continue;
+      if (run.conclusion === "success") {
+        setNotifyStatus("ok", "Notification envoyée ✔ — elle doit apparaître dans quelques secondes.");
+      } else if (run.conclusion === "cancelled") {
+        setNotifyStatus("err", "Le test a été interrompu par un autre passage du bot. Réessaie.");
+      } else {
+        setNotifyStatusLink("err", "Envoi échoué : l'abonnement a peut-être expiré. Touche « Désactiver » puis « Activer les notifications ».", run.html_url);
+      }
+      return;
+    }
+    throw new Error("GitHub n'a pas répondu à temps. Réessaie dans un instant.");
+  } catch (e) {
+    setNotifyStatus("err", e.message);
+  } finally {
+    $("notify-test-btn").disabled = false;
+  }
+}
+
 appendDates(INITIAL_DAYS);
 
 const savedPat = localStorage.getItem("midrag_pat");
@@ -1167,32 +1348,14 @@ $("save-btn").addEventListener("click", saveAll);
 $("run-btn").addEventListener("click", runNow);
 $("more-btn").addEventListener("click", () => appendDates(EXTEND_DAYS));
 $("refresh-state-btn").addEventListener("click", refreshState);
-$("save-token-btn").addEventListener("click", saveMidragToken);
 $("renew-activate-btn").addEventListener("click", renewActivate);
+$("notify-enable-btn").addEventListener("click", notifyEnable);
+$("notify-test-btn").addEventListener("click", notifyTest);
+$("notify-disable-btn").addEventListener("click", notifyDisable);
 $("renew-send-btn").addEventListener("click", renewSend);
 $("renew-resend-btn").addEventListener("click", renewSend);
 $("renew-verify-btn").addEventListener("click", renewVerify);
 $("renew-edit-btn").addEventListener("click", () => showRenewStep("setup"));
-
-$("midrag-token-toggle").addEventListener("click", () => {
-  const f = $("midrag-token");
-  f.type = f.type === "password" ? "text" : "password";
-});
-
-// Retour immédiat sur la validité du token collé, avant même de l'envoyer.
-$("midrag-token").addEventListener("input", () => {
-  const v = $("midrag-token").value.trim();
-  const preview = $("midrag-token-preview");
-  if (!v) { preview.textContent = ""; return; }
-  if (looksLikeGithubToken(v)) {
-    preview.textContent = "⚠️ Ça, c'est ton jeton GitHub — il va dans la carte « Connexion », tout en haut.";
-    return;
-  }
-  const exp = decodeJwtExpiry(v);
-  if (!exp) preview.textContent = "⚠️ Ce texte ne ressemble pas à un token Midrag.";
-  else if (exp.getTime() <= Date.now()) preview.textContent = `⚠️ Token déjà expiré (${formatDateTime(exp)}).`;
-  else preview.textContent = `✔ Token valide jusqu'au ${formatDateTime(exp)}.`;
-});
 
 $("pat-toggle").addEventListener("click", () => {
   const pat = $("pat");

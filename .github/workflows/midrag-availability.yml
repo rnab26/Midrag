@@ -1,5 +1,9 @@
 name: Midrag - maintien de disponibilité
 
+# Le bouton « Envoyer une notification test » de la page relance ce workflow
+# avec test_push=true : le titre du run change pour que la page retrouve le sien.
+run-name: ${{ inputs.test_push && 'Midrag - test notification' || 'Midrag - maintien de disponibilité' }}
+
 on:
   schedule:
     # Filet de sécurité : le déclencheur principal est un cron externe qui
@@ -7,7 +11,13 @@ on:
     # sont souvent retardés). Large marge avant l'expiration d'1h de
     # "disponible maintenant".
     - cron: "*/30 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_push:
+        description: "Envoyer seulement une notification de test (aucun ping)"
+        required: false
+        type: boolean
+        default: false
 
 # Le job ouvre/referme une issue de suivi quand le bot ne peut plus travailler
 # (token Midrag expiré, API en panne) au lieu d'échouer à chaque exécution.
@@ -43,4 +53,7 @@ jobs:
         env:
           MIDRAG_TOKEN: ${{ secrets.MIDRAG_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_PUSH: ${{ inputs.test_push }}
+          WEBPUSH_SUBSCRIPTION: ${{ secrets.WEBPUSH_SUBSCRIPTION }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: python midrag_bot/bot.py
