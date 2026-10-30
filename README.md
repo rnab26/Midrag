@@ -16,7 +16,9 @@ avoir à cliquer toutes les heures.
   l'API Midrag (`SetSliderStatus`) pour repointer le niveau correspondant
   — ce qui remet à zéro le décompte avant expiration côté Midrag.
 - `.github/workflows/midrag-availability.yml` : fait tourner `bot.py`
-  automatiquement toutes les 15 minutes via GitHub Actions — pas besoin de
+  automatiquement via GitHub Actions (cron de secours toutes les 30 min dans
+  le workflow, réglable depuis la page ; le déclencheur principal est un cron
+  externe qui appelle le workflow toutes les 15 min) — pas besoin de
   garder un téléphone ou un ordinateur allumé.
 
 ### Pourquoi pas une connexion 100% automatique ?
@@ -94,7 +96,7 @@ la page si tu veux garder tes changements.
 
 ### 4. C'est tout
 
-Le workflow tourne ensuite tout seul toutes les 15 minutes. Onglet
+Le workflow tourne ensuite tout seul (cadence réglée depuis la page, 15 min par défaut côté cron externe). Onglet
 `Actions` du repo pour voir l'historique des exécutions.
 
 ### Quand le bot est bloqué
