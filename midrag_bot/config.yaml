@@ -18,14 +18,10 @@ notify_hour: 9
 planning_alert_days: 2
 
 schedule:
-  - date: "2026-11-12"
-    start: "00:00"
-    end: "23:59"
-    mode: "tomorrow"
   - date: "2026-11-13"
     start: "00:00"
     end: "23:59"
-    mode: "now"
+    mode: "today"
   - date: "2026-11-13"
     start: "14:00"
     end: "23:59"
